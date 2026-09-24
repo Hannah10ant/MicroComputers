@@ -31,7 +31,7 @@ void main(void)
 	TA0CTL |= ID_3;
 
 	// set the mode control to stop the timer, and start the timer again when needing a delay
-	TA0CTL &= ~MC_0;
+	TA0CTL &= ~MC_3;
 
 	// select the source for ACLK to be XT1CLK ~ 32 kHz, AND mask op since XT1CLK is 000b
 	CSCTL2 &= ~SELA_7;

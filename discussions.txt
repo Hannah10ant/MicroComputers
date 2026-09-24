@@ -1,0 +1,31 @@
+discussion topics below?
+
+for timer interrupts:
+
+the timer A0 and timer A1 (configured via TA0CTL and TA1CTL, both should have the same settings) 
+can set a compare interrupt flag (note below is not functional code, just which bits to set where BIT = 1 and ~BIT = 0)
+
+TIMER0_A1_VECTOR is the interrupt vector which captures TA0CCR1 CCIFG1, TA0CCR2 CCIFG2, and TA0IFG (from MSP430FR573x Mixed-Signal Microcontrollers document SLAUS639L)
+note (informative not necessarily useful): TIMER0_A0_VECTOR is for the interrupt from TA0CCR0 CCIFG0 (also from MSP430FR573x Mixed-Signal Microcontrollers document SLAUS639L)
+TIMER1_A1_VECTOR is the interrupt vector which captures TA1CCR1 CCIFG1, TA1CCR2 CCIFG2, and TA1IFG
+you can tell by looking at the interrupt vector table and checking the word address of the interrupt and line that up with the macro
+i.e. TIMER0_A1_VECTOR = 0xFFE8 and TIMER1_A1_VECTOR = 0xFFE0
+
+TA0CTL = TAIE // set interrupts enabled, note that TA0CTL = TAIFG is the flag thats set when interrupt happens, covered by TIMER0_A1_VECTOR
+TA1CTL = TAIE // ^^
+TA0CCTLn = ~CM // do not want a capture mode, also n here is for either 1 or 2, to keep it simple i suggest using 1 only for both timer A0 and timer A1
+TA1CCTLn = ~CM // ^^
+TA0CCTLn = ~CAP // do not want a capture mode, this will select compare mode
+TA1CCTLn = ~CAP // ^^
+TA0CCTLn = CCIE // do want interrupts from the compare register
+TA1CCTLn = CCIE // ^^
+CCIFG // when set an interrupt will be pending, will be set by the register TAxCCTL itself and trigger TIMER0_A1_VECTOR or TIMER1_A1_VECTOR
+TAxCCRn // holds the compare value for the TAxCCTLn register, write into this the value that should trigger an interrupt
+		// for 600 ms count up should be 0x099A, if 150 ms count up should be 0x0267
+		// not sure about the == of this, i.e. if a simple set TA0R = (0xFFFF - 0x0267) and check for overflow via TA0CTL = TAIFG flag would be better
+		// distinguishing between the timers should be simple given two different interrupt vectors
+		// since the normal call should stop when a emergency call occurs, would need to stop the timer A0 with TA0CTL &= ~MC_3 (just noticed i that wrote that wrong in main)
+		// this would replace the while((TA0R < number)) in the button_ISR, switch statement would need to go into the timer ISR
+		// the while followed by switch could should be swapped for a __low_power_mode_3(); LPM3 has CPU, MCLK, SMCLK, DCO disabled but ACLK still active
+		// would have to look at errata but maybe add a __no_operation after entering LPM3 so that it doesnt accidentally reset the counting register?
+
