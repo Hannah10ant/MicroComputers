@@ -29,3 +29,6 @@ TAxCCRn // holds the compare value for the TAxCCTLn register, write into this th
 		// the while followed by switch could should be swapped for a __low_power_mode_3(); LPM3 has CPU, MCLK, SMCLK, DCO disabled but ACLK still active
 		// would have to look at errata but maybe add a __no_operation after entering LPM3 so that it doesnt accidentally reset the counting register?
 
+
+short thing i noticed while writing the procedure section for lab 4, the UCAxCTLW0 register resets to 0x0001 on start-up 
+this is with the software reset enabled, so if you dont config anything you still need to switch this to 0 to let you do UART or any other serial comms
