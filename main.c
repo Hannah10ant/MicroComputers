@@ -10,6 +10,12 @@
 #define LED7 0x40
 #define LED8 0x80
 
+// should we intricude a task state..?
+// #define IDLE 0
+// #define NORMAL 1
+// #define EMERGENCY 2
+// volatile unassigned char current_task = IDLE;
+
 // switch 1 state, keeps track of which LEDs to turn on
 char S1_state;
 
@@ -50,6 +56,8 @@ void main(void)
 	P4IE |= BIT0 | BIT1; // enable interrupts from port 4
 
 	while(1) {
+		// ------------- NOTES: If you're using ACLK/Timer_A0 to generate timing events, putting the CPU into a mode that stops the relevant clocks means the timer cannot operate expecctedly? no?
+		// ------------- Assigment would suggest LPM0 - if we want to keep LPM4, needs to be justifies
 
 		__low_power_mode_4(); // use LMP4 because this disables all the clock sources, since we are not using a clock based interrupt to init anything
 	
@@ -73,10 +81,14 @@ __interrupt void button_ISR(void) {
 			// turn on GIE, it turns off automatically when entering an interrupt
 			__bis_SR_register(GIE);
 
-
+			// NOTES: wouldn't this mean 'when S1 interupt is not set' ? and if so, that wouldnt make sense bc the interupt happend because it WAS set?
 			while(!(P4IFG & BIT0)) { // when P4IFG = 0x0000 (dont need to consider P4IFG = 0x0001 since this is an ISR) then & 0x0001 = 0, then when its set its 0x0001
 
 				TA0CTL |= TACLR; // clears TA0R to count from 0 again
+				
+				// ------------- NOTES: currently this section is Polling
+				// ------------- Change to interupt
+
 				TA0CTL |= MC_2; // counter starts counting up contiuously 
 				// change this eventually to a interrupt based thing? the switch statement would have to be in the interrupt? can use timer A1 for S2 instead of timer A0 to resolve between the two?
 				while((TA0R < 0x099A)); // TA0 is counting at 4.096 kHz, for a ~600 ms delay want to count to 4096*0.6 = 2458 = 0x099A
