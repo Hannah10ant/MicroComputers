@@ -37,7 +37,7 @@ void main(void)
 	TA0CTL |= ID_3;
 
 	// set the mode control to stop the timer, and start the timer again when needing a delay
-	TA0CTL &= ~MC_0;
+	TA0CTL &= ~MC_3; // already updated this in main (accidentally), so check the note there for why
 
 	// select the source for ACLK to be XT1CLK ~ 32 kHz, AND mask op since XT1CLK is 000b
 	CSCTL2 &= ~SELA_7;
@@ -82,6 +82,14 @@ __interrupt void button_ISR(void) {
 			__bis_SR_register(GIE);
 
 			// NOTES: wouldn't this mean 'when S1 interupt is not set' ? and if so, that wouldnt make sense bc the interupt happend because it WAS set?
+			// erics note : first sorry for updating main instead of dev branch (im confused, also ignore that pull request, i thought thats how i get the other branch), ...
+			//              check the discussions.txt i made there (main branch), can also just put that files contents at the end of this file?
+			//              yes this is supposed to mean 'when S1 interrupt is not set', when an interrupt occurs the P4IV gets reset (will get back to this in a sec) and the P4IFG.0 gets reset ...
+			//              they have an example right above section 8.2.6.1 in SLAU272D, and then we turn off P4IE so that P4IFG does not execute another interrupt, since we only...
+			//              want to break out of the ISR when S1 gets pressed again we have to check something to see if it gets pressed again, and i saw that the P4IFG.0 gets set even when P4IE.0 = 0 ...
+			//              so we can use that to check if its been hit again by checking if the interrupt flag has been set
+			//              back to the P4IV, im not sure if the board reading its own P4IV to see where the interrupt vector is will reset it (i.e. entering the __interrupt void button_ISR() ), so that the switch case always sees 0 ...
+			//              the user guide doesnt say anything in that regard, so im not sure. much text
 			while(!(P4IFG & BIT0)) { // when P4IFG = 0x0000 (dont need to consider P4IFG = 0x0001 since this is an ISR) then & 0x0001 = 0, then when its set its 0x0001
 
 				TA0CTL |= TACLR; // clears TA0R to count from 0 again
