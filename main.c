@@ -143,8 +143,6 @@ __interrupt void button_ISR(void) {
 
 			// last thing to do before exiting is enabling the S1 interrupts again
 			P4IE |= BIT0;
-			
-			}
 
 			break;
 		case P4IV_P4IFG1:
@@ -212,5 +210,6 @@ __interrupt void button_ISR(void) {
 		default:
 			P4IFG = 0x00;
 	}
+}
 
 
