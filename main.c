@@ -69,6 +69,11 @@ void main(void)
 
 #pragma vector = PORT4_VECTOR
 __interrupt void button_ISR(void) {
+
+	// im not sure that this switch statement actually works, reading from P4IV clears the highest priority interrupt flag in register P4IFG ...
+	// but im not sure if P4IV gets reset at the beginning of ISR or after RETI (we want the latter in this current code) ...
+	// if its the former i would have literally no idea how you would distinguish between different ports since the PxIFG.y flag is reset on entry so you could end with a 0x0000 register
+
 	switch(P4IV) {
 		case P4IV_P4IFG0:
 			// button debouncing, not sure how i would do this
