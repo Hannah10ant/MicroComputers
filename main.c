@@ -14,7 +14,7 @@
 // #define IDLE 0
 // #define NORMAL 1
 // #define EMERGENCY 2
-// volatile unassigned char current_task = IDLE;
+// volatile unsigned char current_task = IDLE; // changed from "unassigned" to "unsigned"
 
 // switch 1 state, keeps track of which LEDs to turn on
 char S1_state;
