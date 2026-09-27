@@ -240,6 +240,7 @@ __interrupt void button_ISR(void) {
 // CCIFG // when set an interrupt will be pending, will be set by the register TAxCCTL itself and trigger TIMER0_A1_VECTOR or TIMER1_A1_VECTOR
 // TAxCCRn // holds the compare value for the TAxCCTLn register, write into this the value that should trigger an interrupt
 // 		// for 600 ms count up should be 0x099A, if 150 ms count up should be 0x0267
+//      // also note that for TA1 we could use up mode instead of continuous mode and set TA1CCR0 = 0x099A or 0x0267 to get overflow interrupt, cannot do this on TA0 since TA0CCR0 is the system timer
 // 		// not sure about the == of this, i.e. if a simple set TA0R = (0xFFFF - 0x0267) and check for overflow via TA0CTL = TAIFG flag would be better
 // 		// distinguishing between the timers should be simple given two different interrupt vectors
 // 		// since the normal call should stop when a emergency call occurs, would need to stop the timer A0 with TA0CTL &= ~MC_3 (just noticed i that wrote that wrong in main)
