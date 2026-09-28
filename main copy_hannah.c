@@ -299,6 +299,7 @@ void main(void)
 
         __low_power_mode_0(); // runs entire while(1) loop once, then falls asleep, while(1) loop is checking which case we are in and setting variables to whatever is needed on the button cases
                               // since you have not turned off timer interrupts during this (that i can see) the timer ISR will break out of this LPM and rerun the if statements above ~ every 10 ms, consider turning off timer until button ISR
+                              // alternatively (just thought of this after insta msg) we could use LPM4 here instead since that turns off ACLK so that the interrupt doesnt happen, but of course the interrupt every 10 ms method wouldnt work then
 	}
 
 
