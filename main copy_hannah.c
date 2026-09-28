@@ -10,10 +10,24 @@
 #define LED7 0x40
 #define LED8 0x80
 
+// consider for readability
+// #define FALSE 0
+// #define TRUE !FALSE
+
 // define task states
 #define IDLE       0
 #define NORMAL     1
 #define EMERGENCY  2
+
+// do you want me (not hannah) to correct any of your comment spelling mistakes? they do provide character to the comments
+// also some of the comments i (not hannah) leave are just me pointing out potential side effects or keeping track of what the code is doing
+// will leave my comments as // comments where possible
+
+// (after reading through) i believe you do not turn on TA0CTL |= TAIE on at any point so that TIMER0_A0_VECTOR never gets requested (might be wrong) ...
+// other than that i dont see a problem with the actual logic, looks good, just running through so many if statements (if else chains will set me free) and also ...
+// in essence polling the timer through interrupts where we could be sitting in LPM0 (during the ISR) while waiting for the very long (computer time) delays seems, uhh, not good, LMP0 has a wake up time ... 
+// of typical 0.58 micro secs so that wouldnt affect the actual delay between LED switching to use measly humans.
+// TLDR : looks fine (i still want to try make a version that runs off of timer interrupts by myself on the side though)
 
 // tracks which process has priority
 volatile unsigned char current_task = IDLE;
@@ -61,9 +75,10 @@ void main(void)
 	TA0CTL |= TASSEL_1;     // ACLK
     TA0CTL |= ID_3;         // Input divider /8
     TA0CTL |= TACLR;        // Clear timer
-    TA0CTL |= MC_1;         // Up mode
+    TA0CTL |= MC_1;         // Up mode // do note this will count to the value in TA0CCR0 which is used as the "system timer" (not sure what is meant by that though)
+                                       // also consider moving this the the button ISR and setting this to &= ~MC_3, read note on line 301
 
-	TA0CCR0 = 40;           // Approximately 10 ms
+	TA0CCR0 = 40;           // Approximately 10 ms // in up mode the TA0R will be reset to zero once this many + 1 have been counted, see figure 11-2 in SLAU272D, also include a "10 ms (at x CLK freq)"
 
     // Enable interrupt for TA0CCR0
     TA0CCTL0 |= CCIE;
@@ -72,7 +87,7 @@ void main(void)
 	CSCTL2 &= ~SELA_7;
 
 	// select the input divider for the ACLK to be /1, TA0CTL now has 4.096 kHz / 1 ~ 4.096 kHz
-	CSCTL3 &= ~(0x0700) // need to use 0x0700 here because 0b0000011100000000 is not a standard macro for the CSCTL3 register DIVA bits
+	CSCTL3 &= ~(0x0700) // need to use 0x0700 here because 0b0000011100000000 is not a standard macro for the CSCTL3 register DIVA bits // alternatively reuse the SELA_7 macro
 	CSCTL3 |= DIVA_0; // can remove this line since the prev line already clears the DIVA bits so /1 is selected, but for clarity leave it in
 
 	//GPIO config
@@ -114,14 +129,14 @@ void main(void)
         // S2 HAS PRIORITY OVER S1
         //
         // If both events happen at approximately the same
-        // time, S2 is processed first.
+        // time, S2 is processed first. // first thing i notice is that this is very different to how i did mine lol
         //
 
         if (S2_event)
         {
             S2_event = 0;
-			// S2 while IDLE
 
+			// S2 while IDLE
 
             if (current_task == IDLE)
             {
@@ -158,9 +173,10 @@ void main(void)
                 P3OUT = LED5 | LED6 | LED7 | LED8;
             }
             // S2 while EMERGENCY
+
             else if (current_task == EMERGENCY)
             {
-                // A second S2 acknowledges the emergency call
+                // A second S2 acknowledges the /* (end of) */ emergency call
 
                 emergency_leds_on = 0;
                 emergency_timer = 0;
@@ -281,14 +297,15 @@ void main(void)
         // CPU sleeps here until an interrupt occurs.
         // Timer_A0, running from ACLK, can continue operating.
 
-        __low_power_mode_0();
+        __low_power_mode_0(); // runs entire while(1) loop once, then falls asleep, while(1) loop is checking which case we are in and setting variables to whatever is needed on the button cases
+                              // since you have not turned off timer interrupts during this (that i can see) the timer ISR will break out of this LPM and rerun the if statements above ~ every 10 ms, consider turning off timer until button ISR
 	}
 
 
 	return 0;
 }
 
-// this is were im the most unsure - but using this methood means the most coding is done above yes?
+// this is were im the most unsure - but using this methood means the most coding is done above yes? // well, yes...
 #pragma vector = PORT4_VECTOR
 __interrupt void button_ISR(void)
 {
@@ -320,7 +337,7 @@ __interrupt void button_ISR(void)
 
 /// TIMER_A0 CCR0 INTERRUPT
 //
-// Timer_A0 generates approximately one interrupt every 10 ms.
+// Timer_A0 generates approximately one interrupt every 10 ms. 
 // This gives us a common system clock for:
 //
 //     - millisecond timing
@@ -440,8 +457,8 @@ __interrupt void Timer_A0_ISR(void)
 }
 
 // new structure!
-//	S1/S2 press
-//	
+// S1/S2 press
+//
 // PORT4 ISR
 //
 // set event flag
