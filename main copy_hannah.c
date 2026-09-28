@@ -19,6 +19,10 @@
 #define NORMAL     1
 #define EMERGENCY  2
 
+// functions prototypes for UART printing (note they need to be uncommented at the end of the file)
+// void printstr(char * str);
+// void printend();
+
 // do you want me (not hannah) to correct any of your comment spelling mistakes? they do provide character to the comments
 // also some of the comments i (not hannah) leave are just me pointing out potential side effects or keeping track of what the code is doing
 // will leave my comments as // comments where possible
@@ -120,6 +124,14 @@ void main(void)
 	// All LEDs OFF
     PJOUT = 0x00;
     P3OUT = 0x00;
+
+
+    // UART settings for future use, same settings as lab 4
+    // P2SEL1 = BIT0 | BIT1; 
+	// UCA0CTL1 = UCSSEL_2 | UCSWRST;
+	// UCA0BRW = 6;
+	// UCA0MCTLW = 0x2081;
+	// UCA0CTL1 &= ~UCSWRST;
 
 	__bis_SR_register(GIE); // enable general interrupts
 
@@ -467,3 +479,29 @@ __interrupt void Timer_A0_ISR(void)
 // return from ISR
 //
 // scheduler processes event
+
+
+// generic UART functions for printing
+
+// void printstr(char * str) 
+// {
+	
+// 	char i = 0;
+	
+// 	while (str[i] != '\0') { // check if end of string
+// 		UCA0TXBUF = str[i]; // load character into transmitter buffer
+// 		while (UCA0STATW & UCBUSY); // check whether the transmitter is busy sending a char
+				
+// 		i++; // increment index
+					
+// 	}
+// }
+
+// void printend() 
+// {
+// 	UCA0TXBUF = 0x0A; // 0x0A is '\n' i.e. print a newline on the output
+// 	while (UCA0STATW & UCBUSY); // wait for this to be sent
+			
+// 	UCA0TXBUF = 0x0D; // 0x0D is '\r' carrige return, goes back to the start of the newline 
+// 	while (UCA0STATW & UCBUSY); // wait for this to be sent
+// }
