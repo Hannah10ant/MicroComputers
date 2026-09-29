@@ -91,7 +91,7 @@ void main(void)
 	CSCTL2 &= ~SELA_7;
 
 	// select the input divider for the ACLK to be /1, TA0CTL now has 4.096 kHz / 1 ~ 4.096 kHz
-	CSCTL3 &= ~(0x0700) // need to use 0x0700 here because 0b0000011100000000 is not a standard macro for the CSCTL3 register DIVA bits // alternatively reuse the SELA_7 macro
+	CSCTL3 &= ~(0x0700); // need to use 0x0700 here because 0b0000011100000000 is not a standard macro for the CSCTL3 register DIVA bits // alternatively reuse the SELA_7 macro
 	CSCTL3 |= DIVA_0; // can remove this line since the prev line already clears the DIVA bits so /1 is selected, but for clarity leave it in
 
 	//GPIO config
