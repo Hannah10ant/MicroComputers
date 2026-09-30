@@ -10,17 +10,67 @@
 #define LED7 0x40
 #define LED8 0x80
 
-// should we intricude a task state..?
-// #define IDLE 0
-// #define NORMAL 1
-// #define EMERGENCY 2
-// volatile unsigned char current_task = IDLE; // changed from "unassigned" to "unsigned"
+// consider for readability
+#define FALSE 0
+#define TRUE !FALSE
 
-// switch 1 state, keeps track of which LEDs to turn on
-char S1_state;
+// define task states
+#define IDLE       0
+#define NORMAL     1
+#define EMERGENCY  2
 
-// switch 2 state, keeps track of which LEDs to turn on
-char S2_state;
+// functions prototypes for UART printing (note they need to be uncommented at the end of the file)
+void printstr(char * str);
+void printend();
+
+// do you want me (not hannah) to correct any of your comment spelling mistakes? they do provide character to the comments
+// also some of the comments i (not hannah) leave are just me pointing out potential side effects or keeping track of what the code is doing
+// will leave my comments as // comments where possible
+
+// (after reading through) i believe you do not turn on TA0CTL |= TAIE on at any point so that TIMER0_A0_VECTOR never gets requested (might be wrong) ...
+// other than that i dont see a problem with the actual logic, looks good, just running through so many if statements (if else chains will set me free) and also ...
+// in essence polling the timer through interrupts where we could be sitting in LPM0 (during the ISR) while waiting for the very long (computer time) delays seems, uhh, not good, LMP0 has a wake up time ... 
+// of typical 0.58 micro secs so that wouldnt affect the actual delay between LED switching to use measly humans.
+// TLDR : looks fine (i still want to try make a version that runs off of timer interrupts by myself on the side though)
+
+// tracks which process has priority
+volatile unsigned char current_task = IDLE;
+
+// used to remeber wether normal call was running beofre emeergancy
+volatile unsigned char normal_suspended = FALSE;
+
+// these are the button event flags
+// These are set by the PORT4 interrupt.
+volatile unsigned char S1_event = FALSE;
+volatile unsigned char S2_event = FALSE;
+
+// this is the normal call state
+// Keeps track of which normal LED is currently active.
+//
+// 0 = LED1
+// 1 = LED2
+// 2 = LED3
+// 3 = LED4
+volatile unsigned char S1_state = FALSE;
+
+// this is the emergancy call state
+//
+// 0 = emergency LEDs OFF
+// 1 = emergency LEDs ON
+volatile unsigned char emergency_leds_on = FALSE;
+
+// timer varibles
+// System time in milliseconds
+volatile unsigned long system_ms = FALSE;
+
+// Time spent on the current normal LED
+volatile unsigned int normal_timer = FALSE;
+
+// Time spent since the emergency LEDs last changed state
+volatile unsigned int emergency_timer = FALSE;
+
+// how many times has the system timer overflowed, needs an ISR, total time in ms = sys_timer_overflow * 15990.5 + TA0R * 0.244, prob type cast this to int to get whole number for print
+volatile unsigned int sys_timer_overflow = 0;
 
 void main(void)
 {
@@ -29,192 +79,456 @@ void main(void)
 
 	// timer config
 	TA0CTL = 0x00;
+    TA1CTL = 0x00;
 
-	// want the timer from ACLK to be out of the way, also will want to configure ACLK to be sourced from XT1CLK ~ 32.768 kHz since i need 0.5 sec delays
-	TA0CTL |= TASSEL_1;
+	TA0CTL |= TASSEL_1;     // ACLK
+    TA1CTL |= TASSEL_1;     // ^
+    TA0CTL |= ID_3;         // Input divider /8 -> 32768 / 8 = 4096 Hz
+    TA1CTL |= ID_3;         // ^
+    TA0CTL |= TACLR;        // Clear timer
+    TA1CTL |= TACLR;        // ^
+    TA0CTL |= MC_2;         // continuous mode, will interrupt when overflowing, overflow at 0xFFFF = 65535, at 4096 Hz => 0.244 ms, 65535 * 0.244 ~ 15990.5 ms
+    TA1CTL &= ~MC_3;        // turn the 10 ms timer off, so it doesnt break out of LPM before button ISR
+    // TA1CTL |= MC_1;         // up mode, this is here to remind of general config after button ISR
 
-	// input divider to /8 again slow delays, 32.768 kHz / 8 ~ 4.096 kHz note this will be changed again later to be slower again 
-	TA0CTL |= ID_3;
+	TA1CCR0 = 41;           // Approximately 10 ms at 4096 Hz -> 1/4096 * 41 = 0.01000976 note: prev was 40 -> 1/4096 * 40 = 0.009765 slightly further away from 10 ms, change back if care about overstep
 
-	// set the mode control to stop the timer, and start the timer again when needing a delay
-	TA0CTL &= ~MC_3; // already updated this in main (accidentally), so check the note there for why
+    // Enable interrupt for TA0CCR0
+    TA0CCTL0 |= CCIE;
+    TA1CCTL0 |= CCIE;
 
 	// select the source for ACLK to be XT1CLK ~ 32 kHz, AND mask op since XT1CLK is 000b
 	CSCTL2 &= ~SELA_7;
 
 	// select the input divider for the ACLK to be /1, TA0CTL now has 4.096 kHz / 1 ~ 4.096 kHz
-	CSCTL3 &= ~(0x0700) // need to use 0x0700 here because 0b0000011100000000 is not a standard macro for the CSCTL3 register DIVA bits
+	CSCTL3 &= ~(0x0700); // need to use 0x0700 here because 0b0000011100000000 is not a standard macro for the CSCTL3 register DIVA bits // alternatively reuse the SELA_7 macro
 	CSCTL3 |= DIVA_0; // can remove this line since the prev line already clears the DIVA bits so /1 is selected, but for clarity leave it in
 
-	// configure outputs and inputs
-	PJDIR = 0x0F; // lower nibble for PJ
-	P3DIR = 0xF0; // upper nibble for P3
-	P4DIR = 0x00; // buttons are inputs, 0 is used for inputs
+	//GPIO config
+	// PJ.0 - PJ.3 = LED1 - LED4
+    PJDIR = 0x0F;
+
+    // P3.4 - P3.7 = LED5 - LED8
+    P3DIR = 0xF0;
+
+    // P4.0 = S1
+    // P4.1 = S2
+    P4DIR = 0x00;
+
+	// buton configs 
+	// Enable pull-up resistors for active-low buttons
+    P4REN |= BIT0 | BIT1;
+    P4OUT |= BIT0 | BIT1;
+
+    // Interrupt on high-to-low transition
+    // This corresponds to the buttons being active-low.
+    P4IES |= BIT0 | BIT1;
+
+    // Clear any existing interrupt flags
+    P4IFG &= ~(BIT0 | BIT1);
+
+    // Enable S1 and S2 interrupts
+    P4IE |= BIT0 | BIT1;
+
+	// initalisze
+	// All LEDs OFF
+    PJOUT = 0x00;
+    P3OUT = 0x00;
+
+
+    // UART settings, same settings as lab 4 so 9600 baud, 8 data bits, no parity, 1 stop bit
+    P2SEL1 = BIT0 | BIT1; 
+	UCA0CTL1 = UCSSEL_2 | UCSWRST;
+	UCA0BRW = 6;
+	UCA0MCTLW = 0x2081;
+	UCA0CTL1 &= ~UCSWRST;
 
 	__bis_SR_register(GIE); // enable general interrupts
 
-	P4IE |= BIT0 | BIT1; // enable interrupts from port 4
 
 	while(1) {
-		// ------------- NOTES: If you're using ACLK/Timer_A0 to generate timing events, putting the CPU into a mode that stops the relevant clocks means the timer cannot operate expecctedly? no?
-		// ------------- Assigment would suggest LPM0 - if we want to keep LPM4, needs to be justifies
 
-		__low_power_mode_4(); // use LMP4 because this disables all the clock sources, since we are not using a clock based interrupt to init anything
-	
+        // S2 HAS PRIORITY OVER S1
+        //
+        // If both events happen at approximately the same
+        // time, S2 is processed first. // first thing i notice is that this is very different to how i did mine lol
+        //
+
+        if (S2_event)
+        {
+            S2_event = FALSE;
+
+			// S2 while IDLE
+
+            if (current_task == IDLE)
+            {
+                // Start emergency call
+                current_task = EMERGENCY;
+
+                normal_suspended = FALSE;
+
+                emergency_timer = 0;
+
+                emergency_leds_on = TRUE;
+
+                // Turn ON LED5-LED8 together
+                P3OUT = LED5 | LED6 | LED7 | LED8;
+            }
+			// S2 while NORMAL
+
+            else if (current_task == NORMAL)
+            {
+                // Suspend normal task
+                normal_suspended = TRUE;
+
+                // normal_timer is NOT reset.
+                // S1_state is NOT reset.
+                // Therefore the normal call can resume from the same LED and remaining time.
+
+                current_task = EMERGENCY;
+
+                emergency_timer = 0;
+
+                emergency_leds_on = TRUE;
+
+                // Start emergency LEDs ON
+                P3OUT = LED5 | LED6 | LED7 | LED8;
+            }
+            // S2 while EMERGENCY
+
+            else if (current_task == EMERGENCY)
+            {
+                // A second S2 acknowledges the /* (end of) */ emergency call
+
+                emergency_leds_on = FALSE;
+                emergency_timer = 0;
+
+                // Turn OFF emergency LEDs
+                P3OUT = 0x00;
+
+                // If a normal call was suspended
+                // resume it
+                if (normal_suspended)
+                {
+                    current_task = NORMAL;
+
+                    // Restore the normal LED that was active
+                    switch(S1_state)
+                    {
+                        case 0:
+                            PJOUT = LED1;
+                            break;
+
+                        case 1:
+                            PJOUT = LED2;
+                            break;
+
+                        case 2:
+                            PJOUT = LED3;
+                            break;
+
+                        case 3:
+                            PJOUT = LED4;
+                            break;
+
+                        default:
+                            S1_state = 0;
+                            PJOUT = LED1;
+                            break;
+                    }
+
+                    // not reseting normal_timer.
+                    //
+                    // The normal task resumes with the amount
+                    // of time that remained before the
+                    // emergency occurred.
+
+                    normal_suspended = FALSE;
+                }
+                else
+                {
+                    // Emergency started while idle,
+                    // so return to idle.
+                    current_task = IDLE;
+
+                    // since return to idle turn off 10 ms timer
+                    TA1CTL &= ~MC_3;
+
+                    PJOUT = 0x00;
+                }
+            }
+        }
+
+        // S1 EVENT
+
+        // S1 is only processed after S2.
+        //
+        // This means that if both S1 and S2 events are
+        // waiting, the emergency event gets priority.
+        //
+
+        if (S1_event)
+        {
+            S1_event = FALSE;
+
+            // S1 while IDLE
+
+
+            if (current_task == IDLE)
+            {
+                // Start normal call
+                current_task = NORMAL;
+
+                S1_state = 0;
+
+                normal_timer = 0;
+
+                // Start at LED1
+                PJOUT = LED1;
+            }
+
+
+            // S1 while NORMAL
+
+            else if (current_task == NORMAL)
+            {
+                // Second S1 acknowledges/completes
+                // the normal call.
+
+                current_task = IDLE;
+
+                normal_timer = 0;
+
+                S1_state = 0;
+
+                // turn off the 10 ms timer
+                TA1CTL &= ~MC_3;
+
+                // Turn OFF normal LEDs
+                PJOUT = 0x00;
+            }
+
+            // S1 while EMERGENCY
+
+
+            else if (current_task == EMERGENCY)
+            {
+                // S1 must be ignored while emergency is active.
+
+                // ------------------------> UART logging for this event will be added later.
+            }
+        }
+
+
+        // ENTER LOW POWER MODE
+        // CPU sleeps here until an interrupt occurs.
+        // Timer_A0, running from ACLK, can continue operating.
+
+        __low_power_mode_0(); // runs entire while(1) loop once, then falls asleep, while(1) loop is checking which case we are in and setting variables to whatever is needed on the button cases
+                              // since you have not turned off timer interrupts during this (that i can see) the timer ISR will break out of this LPM and rerun the if statements above ~ every 10 ms, consider turning off timer until button ISR
+                              // alternatively (just thought of this after insta msg) we could use LPM4 here instead since that turns off ACLK so that the interrupt doesnt happen, but of course the interrupt every 10 ms method wouldnt work then
 	}
 
 
 	return 0;
 }
 
+// this is were im the most unsure - but using this methood means the most coding is done above yes? // well, yes...
 #pragma vector = PORT4_VECTOR
-__interrupt void button_ISR(void) {
+__interrupt void button_ISR(void)
+{
+    switch(P4IV)
+    {
+        // S1
+        case P4IV_P4IFG0:
 
-	// im not sure that this switch statement actually works, reading from P4IV clears the highest priority interrupt flag in register P4IFG ...
-	// but im not sure if P4IV gets reset at the beginning of ISR or after RETI (we want the latter in this current code) ...
-	// if its the former i would have literally no idea how you would distinguish between different ports since the PxIFG.y flag is reset on entry so you could end with a 0x0000 register
+            S1_event = 1;
 
-	switch(P4IV) {
-		case P4IV_P4IFG0:
-			// button debouncing, not sure how i would do this
-			
-			S1_state = 0;
-			// S1 case
-			// normal call
-			// turn off interrupts from S1 during operation
-			P4IE &= ~BIT0;			
-			// turn on GIE, it turns off automatically when entering an interrupt
-			__bis_SR_register(GIE);
+            break;
 
-			// NOTES: wouldn't this mean 'when S1 interupt is not set' ? and if so, that wouldnt make sense bc the interupt happend because it WAS set?
-			// erics note : first sorry for updating main instead of dev branch (im confused, also ignore that pull request, i thought thats how i get the other branch), ...
-			//              check the discussions.txt i made there (main branch), can also just put that files contents at the end of this file?
-			//              yes this is supposed to mean 'when S1 interrupt is not set', when an interrupt occurs the P4IV gets reset (will get back to this in a sec) and the P4IFG.0 gets reset ...
-			//              they have an example right above section 8.2.6.1 in SLAU272D, and then we turn off P4IE so that P4IFG does not execute another interrupt, since we only...
-			//              want to break out of the ISR when S1 gets pressed again we have to check something to see if it gets pressed again, and i saw that the P4IFG.0 gets set even when P4IE.0 = 0 ...
-			//              so we can use that to check if its been hit again by checking if the interrupt flag has been set
-			//              back to the P4IV, im not sure if the board reading its own P4IV to see where the interrupt vector is will reset it (i.e. entering the __interrupt void button_ISR() ), so that the switch case always sees 0 ...
-			//              the user guide doesnt say anything in that regard, so im not sure. much text
-			while(!(P4IFG & BIT0)) { // when P4IFG = 0x0000 (dont need to consider P4IFG = 0x0001 since this is an ISR) then & 0x0001 = 0, then when its set its 0x0001
+		// s2
+        case P4IV_P4IFG1:
 
-				TA0CTL |= TACLR; // clears TA0R to count from 0 again
+            S2_event = 1;
+
+            break;
+
+		// else
+
+        default:
+
+            break;
+    }
+
+    // if button ISR turn on the 10 ms clock
+    TA1CTL |= MC_1;
+}
+
+
+
+/// TIMER_A0 CCR0 INTERRUPT
+//
+// Timer_A0 generates approximately one interrupt every 10 ms. 
+// This gives us a common system clock for:
+//
+//     - millisecond timing
+//     - normal LED timing
+//     - emergency LED timing
+//     - future button debouncing
+//
+// No blocking while-loops are required.
+
+#pragma vector = TIMER1_A0_VECTOR // changed the 10 ms timer to timer 1 so this vector needed to be changed
+__interrupt void Timer1_A0_ISR(void)
+{
+
+    // SYSTEM TIME
+
+    system_ms += 10;
+
+    // NORMAL CALL TIMER
+
+    if (current_task == NORMAL)
+    {
+        normal_timer += 10;
+
+
+        // Normal LED changes every 500 ms
+        if (normal_timer >= 500)
+        {
+            normal_timer = 0;
+
+
+            // Move to next normal LED
+
+            switch(S1_state)
+            {
+                case 0:
+
+                    // LED1 -> LED2
+                    PJOUT = LED2;
+
+                    S1_state = 1;
+
+                    break;
+
+
+                case 1:
+
+                    // LED2 -> LED3
+                    PJOUT = LED3;
+
+                    S1_state = 2;
+
+                    break;
+
+
+                case 2:
+
+                    // LED3 -> LED4
+                    PJOUT = LED4;
+
+                    S1_state = 3;
+
+                    break;
+
+
+                case 3:
+
+                    // LED4 -> LED1
+                    PJOUT = LED1;
+
+                    S1_state = 0;
+
+                    break;
+
+
+                default:
+
+                    S1_state = 0;
+
+                    PJOUT = LED1;
+
+                    break;
+            }
+        }
+    }
+
+    // EMERGENCY CALL TIMER
+
+    if (current_task == EMERGENCY)
+    {
+        emergency_timer += 10;
+
+
+        // Emergency LEDs change every 100 ms
+        if (emergency_timer >= 100)
+        {
+            emergency_timer = 0;
+
+
+            // Toggle all four emergency LEDs together
+
+            if (emergency_leds_on)
+            {
+                // Turn them OFF
+                P3OUT = 0x00;
+
+                emergency_leds_on = 0;
+            }
+            else
+            {
+                // Turn them ON
+                P3OUT = LED5 | LED6 | LED7 | LED8;
+
+                emergency_leds_on = 1;
+            }
+        }
+    }
+}
+
+#pragma vector = TIMER0_A0_VECTOR
+__interrupt void Timer0_A0_ISR(void)
+{
+    // dont think there is anything else to do in here?
+    sys_timer_overflow++;
+}
+
+// new structure!
+// S1/S2 press
+//
+// PORT4 ISR
+//
+// set event flag
+//
+// return from ISR
+//
+// scheduler processes event
+
+
+// generic UART functions for printing
+
+void printstr(char * str) 
+{
+	
+	char i = 0;
+	
+	while (str[i] != '\0') { // check if end of string
+		UCA0TXBUF = str[i]; // load character into transmitter buffer
+		while (UCA0STATW & UCBUSY); // check whether the transmitter is busy sending a char
 				
-				// ------------- NOTES: currently this section is Polling
-				// ------------- Change to interupt
-
-				TA0CTL |= MC_2; // counter starts counting up contiuously 
-				// change this eventually to a interrupt based thing? the switch statement would have to be in the interrupt? can use timer A1 for S2 instead of timer A0 to resolve between the two?
-				while((TA0R < 0x099A)); // TA0 is counting at 4.096 kHz, for a ~600 ms delay want to count to 4096*0.6 = 2458 = 0x099A
-
-				switch(S1_state) {
-					case 0:
-						// turn on LED1 and turn off LED2-4
-						PJOUT = LED1;
-						S1_state++;
-
-						break;
-					case 1:
-						// turn on LED2 and turn off LED1, 3-4
-						PJOUT = LED2;
-						S1_state++;
-
-						break;
-					case 2:
-						// turn on LED3 and turn off LED1-2, 4
-						PJOUT = LED3;
-						S1_state++;
-
-						break;
-					case 3:
-						// turn on LED 4 and turn off LED1-3
-						PJOUT = LED4;
-						S1_state = 0;
-
-						break;
-					default:
-						S1_state = 0;
-				}
-			
-			}
-
-			// when exiting the ISR need to turn on the normal conditions again
-			P4IFG &= ~P4IV_P4IFG0;
-
-			// turn off the timer A0
-			TA0CTL &= ~MC_3;
-
-			// turn off all the LEDs
-			PJOUT = 0x00;
-
-			// last thing to do before exiting is enabling the S1 interrupts again
-			P4IE |= BIT0;
-
-			break;
-		case P4IV_P4IFG1:
-			// S2 case
-			// turn off interrupts from S2 during operation, GIE already stops when entering, so S1 doesnt interrupt
-			// button debouncing, not sure how i would do this
-			
-			S2_state = 0;
-
-
-			P4IE &= ~BIT1;
-
-			while(!(P4IFG & BIT1)) { // when P4IFG = 0x0000 then & 0x0002 = 0, then when its set its 0x0002
-
-				TA0CTL |= TACLR; // clears TA0R to count from 0 again
-				TA0CTL |= MC_2; // counter starts counting up contiuously 
-				// change this eventually to a interrupt based thing? the switch statement would have to be in the interrupt? can use timer A1 for S2 instead of timer A0 to resolve between the two?
-				while((TA0R < 0x0267)); // TA0 is counting at 4.096 kHz, for a ~150 ms delay want to count to 4096*0.15 = 615 = 0x0267
-
-				switch(S2_state) {
-					case 0:
-						// turn on LED5 and turn off LED6-8
-						P3OUT = LED5;
-						S2_state++;
-
-						break;
-					case 1:
-						// turn on LED6 and turn off LED5, 6-8
-						P3OUT = LED6;
-						S2_state++;
-
-						break;
-					case 2:
-						// turn on LED7 and turn off LED5-6, 8
-						P3OUT = LED7;
-						S2_state++;
-
-						break;
-					case 3:
-						// turn on LED8 and turn off LED5-7
-						P3OUT = LED8;
-						S2_state = 0;
-
-						break;
-					default:
-						S2_state = 0;
-				}
-			
-			}
-
-			// when exiting the ISR need to turn on the normal conditions again
-			P4IFG &= ~P4IV_P4IFG1;
-
-			// turn off the timer A0
-			TA0CTL &= ~MC_3;
-
-			// turn off all the LEDs
-			P3OUT = 0x00;
-
-			// last thing to do before exiting is enabling the S2 interrupts again
-			P4IE |= BIT1;
-
-
-			break;
-		default:
-			P4IFG = 0x00;
+		i++; // increment index
+					
 	}
+}
+
+void printend() 
+{
+	UCA0TXBUF = 0x0A; // 0x0A is '\n' i.e. print a newline on the output
+	while (UCA0STATW & UCBUSY); // wait for this to be sent
+			
+	UCA0TXBUF = 0x0D; // 0x0D is '\r' carrige return, goes back to the start of the newline 
+	while (UCA0STATW & UCBUSY); // wait for this to be sent
 }
 
 
