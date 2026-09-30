@@ -41,8 +41,10 @@ void main(void)
 	CSCTL3 |= DIVA_0; // can remove this line since the prev line already clears the DIVA bits so /1 is selected, but for clarity leave it in
 
 	// configure outputs and inputs
+	// Outputs
 	PJDIR = 0x0F; // lower nibble for PJ
 	P3DIR = 0xF0; // upper nibble for P3
+	// Inputs
 	P4DIR = 0x00; // buttons are inputs, 0 is used for inputs
 
 	__bis_SR_register(GIE); // enable general interrupts
