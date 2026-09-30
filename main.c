@@ -19,20 +19,10 @@
 #define NORMAL     1
 #define EMERGENCY  2
 
-// functions prototypes for UART printing (note they need to be uncommented at the end of the file)
+// functions prototypes for UART printing
 void printstr(char * str);
 void printend();
-void convert_timer(char final[12]);
-
-// do you want me (not hannah) to correct any of your comment spelling mistakes? they do provide character to the comments
-// also some of the comments i (not hannah) leave are just me pointing out potential side effects or keeping track of what the code is doing
-// will leave my comments as // comments where possible
-
-// (after reading through) i believe you do not turn on TA0CTL |= TAIE on at any point so that TIMER0_A0_VECTOR never gets requested (might be wrong) ...
-// other than that i dont see a problem with the actual logic, looks good, just running through so many if statements (if else chains will set me free) and also ...
-// in essence polling the timer through interrupts where we could be sitting in LPM0 (during the ISR) while waiting for the very long (computer time) delays seems, uhh, not good, LMP0 has a wake up time ... 
-// of typical 0.58 micro secs so that wouldnt affect the actual delay between LED switching to use measly humans.
-// TLDR : looks fine (i still want to try make a version that runs off of timer interrupts by myself on the side though)
+void convert_timer(char final[11]);
 
 // tracks which process has priority
 volatile unsigned char current_task = IDLE;
@@ -65,24 +55,15 @@ volatile unsigned char emergency_leds_on = FALSE;
 volatile unsigned long system_ms = 0;
 
 // Time spent on the current normal LED
-volatile unsigned int normal_timer = FALSE;
+volatile unsigned int normal_timer = 0;
 
 // Time spent since the emergency LEDs last changed state
-volatile unsigned int emergency_timer = FALSE;
+volatile unsigned int emergency_timer = 0;
 
 // how many times has the system timer overflowed, needs an ISR, total time in ms = sys_timer_overflow * 15990.5 + TA0R * 0.244, prob type cast this to int to get whole number for print
 volatile unsigned int sys_timer_overflow = 0;
 
-// a lot of strings to print the UART message using printstr(), note these do not include the "[ time ms", also just pass these directly into the printstr() instead of initializing a string
-// " ] S2 -> EMERGENCY CALL : EXIT IDLE\n";
-// " ] S2 -> EMERGENCY CALL : SUSPEND NORMAL CALL\n";
-// " ] S2 -> EXIT EMERGENCY CALL : RESUME NORMAL CALL\n";
-// " ] S2 -> EMERGENCY CALL COMPLETE\n";
-// " ] S1 -> NORMAL CALL : EXIT IDLE\n";
-// " ] S1 -> NORMAL CALL COMPLETE\n";
-// " ] S1 -> NORMAL CALL IGNORED : EMERGENCY CALL ACTIVE\n"
-
-volatile char time[11] = {'0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '\0'};
+volatile char time[11] = {'0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '\0'}; // generic string to store the time string inside
 
 void main(void)
 {    
@@ -191,6 +172,11 @@ void main(void)
 
                 // ---------------------------------------- print ---> [ time ms ] S2 -> EMERGENCY CALL : EXIT IDLE\n
 
+                printstr("[ ");
+                convert_timer(time);
+                printstr(time);
+                printstr(" ms ] S2 -> EMERGENCY CALL : EXIT IDLE\n");
+
             }
             // S2 while NORMAL
 
@@ -213,6 +199,11 @@ void main(void)
                 P3OUT = LED5 | LED6 | LED7 | LED8;
 
                 // ---------------------------------------- print ---> [ time ms ] S2 -> EMERGENCY CALL : SUSPEND NORMAL CALL\n
+
+                printstr("[ ");
+                convert_timer(time);
+                printstr(time);
+                printstr(" ms ] S2 -> EMERGENCY CALL : SUSPEND NORMAL CALL\n");
 
             }
             // S2 while EMERGENCY
@@ -267,6 +258,10 @@ void main(void)
                     normal_suspended = FALSE;
 
                     // ---------------------------------------- print ---> [ time ms ] S2 -> EXIT EMERGENCY CALL : RESUME NORMAL CALL\n
+                    printstr("[ ");
+                    convert_timer(time);
+                    printstr(time);
+                    printstr(" ms ] S2 -> EXIT EMERGENCY CALL : RESUME NORMAL CALL\n");
 
                 }
                 else
@@ -281,6 +276,11 @@ void main(void)
                     PJOUT = 0x00;
 
                     // ---------------------------------------- print ---> [ time ms ] S2 -> EMERGENCY CALL COMPLETE\n
+
+                    printstr("[ ");
+                    convert_timer(time);
+                    printstr(time);
+                    printstr(" ms ] S2 -> EMERGENCY CALL COMPLETE\n");
 
                 }
             }
@@ -314,6 +314,10 @@ void main(void)
                 PJOUT = LED1;
 
                 // ---------------------------------------- print ---> [ time ms ] S1 -> NORMAL CALL : EXIT IDLE\n
+                printstr("[ ");
+                convert_timer(time);
+                printstr(time);
+                printstr(" ms ] S1 -> NORMAL CALL : EXIT IDLE\n");
 
             }
 
@@ -338,6 +342,10 @@ void main(void)
                 PJOUT = 0x00;
 
                 // ---------------------------------------- print ---> [ time ms ] S1 -> NORMAL CALL COMPLETE\n
+                printstr("[ ");
+                convert_timer(time);
+                printstr(time);
+                printstr(" ms ] S1 -> NORMAL CALL COMPLETE\n");
 
             }
 
@@ -349,6 +357,10 @@ void main(void)
                 // S1 must be ignored while emergency is active.
 
                 // ---------------------------------------- print ---> [ time ms ] S1 -> NORMAL CALL IGNORED : EMERGENCY CALL ACTIVE\n
+                printstr("[ ");
+                convert_timer(time);
+                printstr(time);
+                printstr(" ms ] S1 -> NORMAL CALL IGNORED : EMERGENCY CALL ACTIVE\n");
 
             }
         }
