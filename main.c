@@ -102,6 +102,10 @@ void main(void)
 
     TA1CCR0 = 41;           // Approximately 10 ms at 4096 Hz -> 1/4096 * 41 = 0.01000976 note: prev was 40 -> 1/4096 * 40 = 0.009765 slightly further away from 10 ms, change back if care about overstep
 
+    // enable timer interrupts
+    TA0CTL |= TAIE;
+    TA1CTL |= TAIE;
+
     // Enable interrupt for TA0CCR0
     TA0CCTL0 |= CCIE;
     TA1CCTL0 |= CCIE;
