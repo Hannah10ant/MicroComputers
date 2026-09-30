@@ -72,7 +72,14 @@ volatile unsigned int emergency_timer = FALSE;
 // how many times has the system timer overflowed, needs an ISR, total time in ms = sys_timer_overflow * 15990.5 + TA0R * 0.244, prob type cast this to int to get whole number for print
 volatile unsigned int sys_timer_overflow = 0;
 
-
+// a lot of strings to print the UART message using printstr(), note these do not include the "[ time ms", also just pass these directly into the printstr() instead of initializing a string
+// " ] S2 -> EMERGENCY CALL : EXIT IDLE\n";
+// " ] S2 -> EMERGENCY CALL : SUSPEND NORMAL CALL\n";
+// " ] S2 -> EXIT EMERGENCY CALL : RESUME NORMAL CALL\n";
+// " ] S2 -> EMERGENCY CALL COMPLETE\n";
+// " ] S1 -> NORMAL CALL : EXIT IDLE\n";
+// " ] S1 -> NORMAL CALL COMPLETE\n";
+// " ] S1 -> NORMAL CALL IGNORED : EMERGENCY CALL ACTIVE\n"
 
 void main(void)
 {    
