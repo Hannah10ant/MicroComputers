@@ -22,6 +22,7 @@
 // functions prototypes for UART printing (note they need to be uncommented at the end of the file)
 void printstr(char * str);
 void printend();
+void convert_timer(char final[12]);
 
 // do you want me (not hannah) to correct any of your comment spelling mistakes? they do provide character to the comments
 // also some of the comments i (not hannah) leave are just me pointing out potential side effects or keeping track of what the code is doing
@@ -554,6 +555,109 @@ void printend()
 
     UCA0TXBUF = 0x0D; // 0x0D is '\r' carrige return, goes back to the start of the newline 
     while (UCA0STATW & UCBUSY); // wait for this to be sent
+}
+
+
+// big mostly commented function
+void convert_timer(char final[12])
+{
+    // how do you convert a integer to its string representation without a standard library ???
+    unsigned long total_time_ms = sys_timer_overflow * 15990.5 + TA0R * 0.244; // maximum value of 4,294,967,295 ms
+
+    // 0 in ascii is 48
+    // 1 in ascii is 49 etc...
+
+    // if i have 2468
+    // do 2468 % 10 = 8 then 2468 / 10 = 246
+    // do 246 % 10 = 6 then 246 / 10 = 24
+    // do 24 % 10 = 4 then 24 / 10 = 2
+    // do char str[] = {'0' + 2, '0' + 4, '0' + 6, '0' + 8, '\0'}
+
+    signed char idx;
+
+    for (idx = 0; idx < 10; idx ++)
+    {
+        final[ 10 - idx ] = (total_time_ms % 10) + '0';
+        total_time_ms = total_time_ms / 10;
+    }
+
+    // not a good strategy, msp does not have a inbuilt % operator, and TI suggests avoiding / or % entirely
+    // the other thing i found was double dabble, more complex, but apparently cheaper on hardware
+
+    // also can maybe get some sort of lookup table implementation, but everything past the above im out of my depth
+
+
+
+
+
+    // // double dabble algorithm (yes thats the actual name)
+    // // initialize some array for the scratch space
+    // // maximum number of characters is 10 * 4 bits per character + 32 bits for total time = 72 bits = 9 bytes
+    // unsigned char scratch[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+    // // lower 2 bytes
+    // scratch[8] = total_time_ms & 0xFF;
+    // total_time_ms >>= 8;
+    // scratch[7] = total_time_ms & 0xFF;
+    // total_time_ms >>= 8;
+    // // upper 2 bytes
+    // scratch[6] = total_time_ms & 0xFF;
+    // total_time_ms >>= 8;
+    // scratch[5] = total_time_ms & 0xFF;
+    // // total_time is now loaded into the upper elements of the array
+
+    // signed char idx;
+    // signed char odx;
+
+    // // need to keep track of the byte thats one lower to get correct shifting
+    // unsigned char carry_in = 0;
+    // unsigned char carry_out = 0;
+
+    // char lower_nibble;
+    // char upper_nibble;
+
+    // while ( (scratch[8] != 0x00) ||
+    //         (scratch[7] != 0x00) ||
+    //         (scratch[6] != 0x00) ||
+    //         (scratch[5] != 0x00) )
+    // {
+
+    //     for (odx = 0; odx < 5; odx++)
+    //     {
+    //         // check lower nibble
+    //         lower_nibble = scratch[odx] & 0x0F;
+    //         if (lower_nibble >= 5)
+    //         {
+    //             scratch[odx] += 0x03;
+    //         }
+            
+    //         // check upper nibble
+    //         upper_nibble = (scratch[odx] >> 4) & 0x0F;
+    //         if (upper_nibble >= 5)
+    //         {
+    //             scratch[odx] += 0x30;
+    //         }
+    //     }
+
+    //     carry_in = 0;
+    //     for (idx = 8; idx >= 0; idx--)
+    //     {
+    //         carry_out = scratch[idx] & 0x80; // is the top bit set, important for carrying over to next byte
+    //         carry_out >>= 7; // place the previous top bit to bottom bit
+    //         scratch[idx] = (scratch[idx] << 1) | carry_in; // shift the byte one left and replace the lowest bit with the highest bit of the previous byte
+    //         carry_in = carry_out;
+    //     }
+    // }
+
+    // // scratch[0 - 4] now holds all the values in "decimal"
+    // for (idx = 0; idx < 5; idx++)
+    // {
+    //     lower_nibble = scratch[idx] & 0x0F;
+    //     upper_nibble = scratch[idx] >> 4;
+
+    //     final[ 2 * idx ] = upper_nibble + '0';
+    //     final[ (2 * idx) + 1 ] = lower_nibble + '0';
+    // }
 }
 
 
