@@ -51,7 +51,7 @@ volatile unsigned char S2_event = FALSE;
 // 1 = LED2
 // 2 = LED3
 // 3 = LED4
-volatile unsigned char S1_state = FALSE;
+volatile unsigned char S1_state = 0;
 
 // this is the emergancy call state
 //
