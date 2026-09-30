@@ -61,7 +61,7 @@ volatile unsigned char emergency_leds_on = FALSE;
 
 // timer varibles
 // System time in milliseconds
-volatile unsigned long system_ms = FALSE;
+volatile unsigned long system_ms = 0;
 
 // Time spent on the current normal LED
 volatile unsigned int normal_timer = FALSE;
@@ -71,6 +71,8 @@ volatile unsigned int emergency_timer = FALSE;
 
 // how many times has the system timer overflowed, needs an ISR, total time in ms = sys_timer_overflow * 15990.5 + TA0R * 0.244, prob type cast this to int to get whole number for print
 volatile unsigned int sys_timer_overflow = 0;
+
+
 
 void main(void)
 {    
