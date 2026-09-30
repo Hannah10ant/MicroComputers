@@ -82,6 +82,8 @@ volatile unsigned int sys_timer_overflow = 0;
 // " ] S1 -> NORMAL CALL COMPLETE\n";
 // " ] S1 -> NORMAL CALL IGNORED : EMERGENCY CALL ACTIVE\n"
 
+volatile char time[11] = {'0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '\0'};
+
 void main(void)
 {    
     WDTCTL = WDTPW + WDTHOLD; // hold watchdog
@@ -563,7 +565,7 @@ void printend()
 
 
 // big mostly commented function
-void convert_timer(char final[12])
+void convert_timer(char final[11])
 {
     // how do you convert a integer to its string representation without a standard library ???
     unsigned long total_time_ms = sys_timer_overflow * 15990.5 + TA0R * 0.244; // maximum value of 4,294,967,295 ms
@@ -579,9 +581,9 @@ void convert_timer(char final[12])
 
     signed char idx;
 
-    for (idx = 0; idx < 10; idx ++)
+    for (idx = 0; idx < 9; idx ++)
     {
-        final[ 10 - idx ] = (total_time_ms % 10) + '0';
+        final[ 9 - idx ] = (total_time_ms % 10) + '0';
         total_time_ms = total_time_ms / 10;
     }
 
