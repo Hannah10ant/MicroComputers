@@ -73,15 +73,14 @@ volatile unsigned int emergency_timer = FALSE;
 volatile unsigned int sys_timer_overflow = 0;
 
 void main(void)
-{
-	
-	WDTCTL = WDTPW + WDTHOLD; // hold watchdog
+{    
+    WDTCTL = WDTPW + WDTHOLD; // hold watchdog
 
-	// timer config
-	TA0CTL = 0x00;
+    // timer config
+    TA0CTL = 0x00;
     TA1CTL = 0x00;
 
-	TA0CTL |= TASSEL_1;     // ACLK
+    TA0CTL |= TASSEL_1;     // ACLK
     TA1CTL |= TASSEL_1;     // ^
     TA0CTL |= ID_3;         // Input divider /8 -> 32768 / 8 = 4096 Hz
     TA1CTL |= ID_3;         // ^
@@ -91,21 +90,21 @@ void main(void)
     TA1CTL &= ~MC_3;        // turn the 10 ms timer off, so it doesnt break out of LPM before button ISR
     // TA1CTL |= MC_1;         // up mode, this is here to remind of general config after button ISR
 
-	TA1CCR0 = 41;           // Approximately 10 ms at 4096 Hz -> 1/4096 * 41 = 0.01000976 note: prev was 40 -> 1/4096 * 40 = 0.009765 slightly further away from 10 ms, change back if care about overstep
+    TA1CCR0 = 41;           // Approximately 10 ms at 4096 Hz -> 1/4096 * 41 = 0.01000976 note: prev was 40 -> 1/4096 * 40 = 0.009765 slightly further away from 10 ms, change back if care about overstep
 
     // Enable interrupt for TA0CCR0
     TA0CCTL0 |= CCIE;
     TA1CCTL0 |= CCIE;
 
-	// select the source for ACLK to be XT1CLK ~ 32 kHz, AND mask op since XT1CLK is 000b
-	CSCTL2 &= ~SELA_7;
+    // select the source for ACLK to be XT1CLK ~ 32 kHz, AND mask op since XT1CLK is 000b
+    CSCTL2 &= ~SELA_7;
 
-	// select the input divider for the ACLK to be /1, TA0CTL now has 4.096 kHz / 1 ~ 4.096 kHz
-	CSCTL3 &= ~(0x0700); // need to use 0x0700 here because 0b0000011100000000 is not a standard macro for the CSCTL3 register DIVA bits // alternatively reuse the SELA_7 macro
-	CSCTL3 |= DIVA_0; // can remove this line since the prev line already clears the DIVA bits so /1 is selected, but for clarity leave it in
+    // select the input divider for the ACLK to be /1, TA0CTL now has 4.096 kHz / 1 ~ 4.096 kHz
+    CSCTL3 &= ~(0x0700); // need to use 0x0700 here because 0b0000011100000000 is not a standard macro for the CSCTL3 register DIVA bits // alternatively reuse the SELA_7 macro
+    CSCTL3 |= DIVA_0; // can remove this line since the prev line already clears the DIVA bits so /1 is selected, but for clarity leave it in
 
-	//GPIO config
-	// PJ.0 - PJ.3 = LED1 - LED4
+    //GPIO config
+    // PJ.0 - PJ.3 = LED1 - LED4
     PJDIR = 0x0F;
 
     // P3.4 - P3.7 = LED5 - LED8
@@ -115,8 +114,8 @@ void main(void)
     // P4.1 = S2
     P4DIR = 0x00;
 
-	// buton configs 
-	// Enable pull-up resistors for active-low buttons
+    // buton configs 
+    // Enable pull-up resistors for active-low buttons
     P4REN |= BIT0 | BIT1;
     P4OUT |= BIT0 | BIT1;
 
@@ -130,23 +129,23 @@ void main(void)
     // Enable S1 and S2 interrupts
     P4IE |= BIT0 | BIT1;
 
-	// initalisze
-	// All LEDs OFF
+    // initalisze
+    // All LEDs OFF
     PJOUT = 0x00;
     P3OUT = 0x00;
 
 
     // UART settings, same settings as lab 4 so 9600 baud, 8 data bits, no parity, 1 stop bit
     P2SEL1 = BIT0 | BIT1; 
-	UCA0CTL1 = UCSSEL_2 | UCSWRST;
-	UCA0BRW = 6;
-	UCA0MCTLW = 0x2081;
-	UCA0CTL1 &= ~UCSWRST;
+    UCA0CTL1 = UCSSEL_2 | UCSWRST;
+    UCA0BRW = 6;
+    UCA0MCTLW = 0x2081;
+    UCA0CTL1 &= ~UCSWRST;
 
-	__bis_SR_register(GIE); // enable general interrupts
+    __bis_SR_register(GIE); // enable general interrupts
 
 
-	while(1) {
+    while(1) {
 
         // S2 HAS PRIORITY OVER S1
         //
@@ -158,7 +157,7 @@ void main(void)
         {
             S2_event = FALSE;
 
-			// S2 while IDLE
+            // S2 while IDLE
 
             if (current_task == IDLE)
             {
@@ -173,8 +172,11 @@ void main(void)
 
                 // Turn ON LED5-LED8 together
                 P3OUT = LED5 | LED6 | LED7 | LED8;
+
+                // ---------------------------------------- print ---> [ time ms ] S2 -> EMERGENCY CALL : EXIT IDLE\n
+
             }
-			// S2 while NORMAL
+            // S2 while NORMAL
 
             else if (current_task == NORMAL)
             {
@@ -193,6 +195,9 @@ void main(void)
 
                 // Start emergency LEDs ON
                 P3OUT = LED5 | LED6 | LED7 | LED8;
+
+                // ---------------------------------------- print ---> [ time ms ] S2 -> EMERGENCY CALL : SUSPEND NORMAL CALL\n
+
             }
             // S2 while EMERGENCY
 
@@ -244,6 +249,9 @@ void main(void)
                     // emergency occurred.
 
                     normal_suspended = FALSE;
+
+                    // ---------------------------------------- print ---> [ time ms ] S2 -> EXIT EMERGENCY CALL : RESUME NORMAL CALL\n
+
                 }
                 else
                 {
@@ -255,6 +263,9 @@ void main(void)
                     TA1CTL &= ~MC_3;
 
                     PJOUT = 0x00;
+
+                    // ---------------------------------------- print ---> [ time ms ] S2 -> EMERGENCY CALL COMPLETE\n
+
                 }
             }
         }
@@ -285,6 +296,9 @@ void main(void)
 
                 // Start at LED1
                 PJOUT = LED1;
+
+                // ---------------------------------------- print ---> [ time ms ] S1 -> NORMAL CALL : EXIT IDLE\n
+
             }
 
 
@@ -306,6 +320,9 @@ void main(void)
 
                 // Turn OFF normal LEDs
                 PJOUT = 0x00;
+
+                // ---------------------------------------- print ---> [ time ms ] S1 -> NORMAL CALL COMPLETE\n
+
             }
 
             // S1 while EMERGENCY
@@ -315,7 +332,8 @@ void main(void)
             {
                 // S1 must be ignored while emergency is active.
 
-                // ------------------------> UART logging for this event will be added later.
+                // ---------------------------------------- print ---> [ time ms ] S1 -> NORMAL CALL IGNORED : EMERGENCY CALL ACTIVE\n
+
             }
         }
 
@@ -327,10 +345,10 @@ void main(void)
         __low_power_mode_0(); // runs entire while(1) loop once, then falls asleep, while(1) loop is checking which case we are in and setting variables to whatever is needed on the button cases
                               // since you have not turned off timer interrupts during this (that i can see) the timer ISR will break out of this LPM and rerun the if statements above ~ every 10 ms, consider turning off timer until button ISR
                               // alternatively (just thought of this after insta msg) we could use LPM4 here instead since that turns off ACLK so that the interrupt doesnt happen, but of course the interrupt every 10 ms method wouldnt work then
-	}
+    }
 
 
-	return 0;
+    return 0;
 }
 
 // this is were im the most unsure - but using this methood means the most coding is done above yes? // well, yes...
@@ -346,14 +364,14 @@ __interrupt void button_ISR(void)
 
             break;
 
-		// s2
+        // s2
         case P4IV_P4IFG1:
 
             S2_event = 1;
 
             break;
 
-		// else
+        // else
 
         default:
 
@@ -510,25 +528,23 @@ __interrupt void Timer0_A0_ISR(void)
 
 void printstr(char * str) 
 {
-	
-	char i = 0;
-	
-	while (str[i] != '\0') { // check if end of string
-		UCA0TXBUF = str[i]; // load character into transmitter buffer
-		while (UCA0STATW & UCBUSY); // check whether the transmitter is busy sending a char
-				
-		i++; // increment index
-					
-	}
+    char i = 0;
+    while (str[i] != '\0') { // check if end of string
+        UCA0TXBUF = str[i]; // load character into transmitter buffer
+        while (UCA0STATW & UCBUSY); // check whether the transmitter is busy sending a char
+
+        i++; // increment index
+    
+    }
 }
 
 void printend() 
 {
-	UCA0TXBUF = 0x0A; // 0x0A is '\n' i.e. print a newline on the output
-	while (UCA0STATW & UCBUSY); // wait for this to be sent
-			
-	UCA0TXBUF = 0x0D; // 0x0D is '\r' carrige return, goes back to the start of the newline 
-	while (UCA0STATW & UCBUSY); // wait for this to be sent
+    UCA0TXBUF = 0x0A; // 0x0A is '\n' i.e. print a newline on the output
+    while (UCA0STATW & UCBUSY); // wait for this to be sent
+
+    UCA0TXBUF = 0x0D; // 0x0D is '\r' carrige return, goes back to the start of the newline 
+    while (UCA0STATW & UCBUSY); // wait for this to be sent
 }
 
 
