@@ -385,8 +385,20 @@ __interrupt void button_ISR(void)
     // button debouncing in here?
     // take the system timer TA0R value and then say continue only when > TA0R + 40 ?
     // 
+	unsigned long timer_value = TA0R
+    
+	// Disable S1 and S2 interrupts
+    P4IFG &= ~(BIT0 | BIT1);
 
-    switch(P4IV)
+	while (timer_value < TAOR+40){
+		timer_value = TAOR;
+	}
+    
+	// Enable S1 and S2 interrupts
+    P4IE |= BIT0 | BIT1;
+
+
+	switch(P4IV)
     {
         // S1
         case P4IV_P4IFG0:
