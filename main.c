@@ -607,6 +607,8 @@ void convert_timer(char final[11])
 
     // also can maybe get some sort of lookup table implementation, but everything past the above im out of my depth
 
+	// Sprintf approach
+	// sprintf(final, "%d", total_time_ms);
 
     // double dabble algorithm (yes thats the actual name)
     // initialize some array for the scratch space
