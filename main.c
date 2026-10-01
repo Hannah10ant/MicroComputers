@@ -20,9 +20,9 @@
 #define EMERGENCY  2
 
 // functions prototypes for UART printing
-void printstr(char * str);
+void printstr(volatile char * str);
 void printend();
-void convert_timer(char final[11]);
+void convert_timer(volatile char final[11]);
 
 // tracks which process has priority
 volatile unsigned char current_task = IDLE;
@@ -555,7 +555,7 @@ __interrupt void Timer0_A0_ISR(void)
 
 // generic UART functions for printing
 
-void printstr(char * str) 
+void printstr(volatile char * str) 
 {
     char i = 0;
     while (str[i] != '\0') { // check if end of string
@@ -578,7 +578,7 @@ void printend()
 
 
 // big mostly commented function
-void convert_timer(char final[11])
+void convert_timer(volatile char final[11])
 {
     // how do you convert a integer to its string representation without a standard library ???
     unsigned long total_time_ms = sys_timer_overflow * 15990.5 + TA0R * 1000/4096; // maximum value of 4,294,967,295 ms note that 1000/4096 is just the time in ms for clock ticks
