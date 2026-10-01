@@ -383,6 +383,9 @@ void main(void)
 #pragma vector = PORT4_VECTOR
 __interrupt void button_ISR(void)
 {
+    // button debouncing in here?
+
+
     switch(P4IV)
     {
         // S1
