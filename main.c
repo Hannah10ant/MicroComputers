@@ -133,7 +133,6 @@ void main(void)
     PJOUT = 0x00;
     P3OUT = 0x00;
 
-
     // UART settings, same settings as lab 4 so 9600 baud, 8 data bits, no parity, 1 stop bit
     P2SEL1 = BIT0 | BIT1; 
     UCA0CTL1 = UCSSEL_2 | UCSWRST;
@@ -390,8 +389,8 @@ __interrupt void button_ISR(void)
 	// Disable S1 and S2 interrupts
     P4IFG &= ~(BIT0 | BIT1);
 
-	while (timer_value < TAOR+40){
-		timer_value = TAOR;
+	while (timer_value < (TA0R+40)){
+		timer_value = TA0R;
 	}
     
 	// Enable S1 and S2 interrupts
