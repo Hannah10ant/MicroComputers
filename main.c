@@ -384,7 +384,8 @@ void main(void)
 __interrupt void button_ISR(void)
 {
     // button debouncing in here?
-
+    // take the system timer TA0R value and then say continue only when > TA0R + 40 ?
+    // 
 
     switch(P4IV)
     {
