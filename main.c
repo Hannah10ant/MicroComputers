@@ -89,10 +89,10 @@ void main(void)
 
     // enable timer interrupts
     TA0CTL |= TAIE;
-    TA1CTL |= TAIE;
+    // TA1CTL |= TAIE; does not need to be on since no TA1IFG is set by overflow, which this should not be doing
 
     // Enable interrupt for TA0CCR0
-    TA0CCTL0 |= CCIE;
+    // TA0CCTL0 |= CCIE; not needed since we do not use TA0CCR0 for any comparisons and it might be triggering compare/control interrupts accidentally
     TA1CCTL0 |= CCIE;
 
     // select the source for ACLK to be XT1CLK ~ 32 kHz, AND mask op since XT1CLK is 000b
@@ -547,10 +547,12 @@ __interrupt void Timer1_A0_ISR(void)
 }
 
 #pragma vector = TIMER0_A1_VECTOR // Used to be A0
-__interrupt void Timer0_A0_ISR(void)
+__interrupt void Timer0_A1_ISR(void)
 {
     // dont think there is anything else to do in here?
     sys_timer_overflow++;
+    // make sure to reset TA0IFG
+    TA0CTL &= ~TAIFG;
 }
 
 // new structure!
@@ -593,7 +595,7 @@ void printend()
 void convert_timer(volatile char final[11])
 {
     // how do you convert a integer to its string representation without a standard library ???
-    unsigned long total_time_ms = sys_timer_overflow * 15990.5 + TA0R * 1000/4096; // maximum value of 4,294,967,295 ms note that 1000/4096 is just the time in ms for clock ticks
+    unsigned long total_time_ms = ((unsigned long)sys_timer_overflow) * 15990.5 + ((unsigned long)TA0R * 1000)/4096; // maximum value of 4,294,967,295 ms note that 1000/4096 is just the time in ms for clock ticks, overflow issue here
 
     // 0 in ascii is 48
     // 1 in ascii is 49 etc...
