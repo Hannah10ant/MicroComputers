@@ -386,18 +386,23 @@ __interrupt void button_ISR(void)
     // 
 	volatile unsigned int timer_value = TA0R; // this does not need to be a long (32 bit) TA0R is only 16 bits (int)
 
+    unsigned int vector = P4IV;
+
 	// Disable S1 and S2 interrupts
     P4IE &= ~(BIT0 | BIT1); // was P4IFG
 
-	while (timer_value < (TA0R+40)){ // infinite loop ???, if you reassign timer_value = TA0R then this is infinite since timer_value always < TA0R + 40
+	while (timer_value < (TA0R+40)){ // infinite loop ???, if you reassign timer_value = TA0R then this is infinite since timer_value always < TA0R + 40, also case where TA0R + 40 overflows
 
 	}
     
+    // discard bounce flags, this wipes P4IV, need to take note of what P4IV is before this
+    P4IFG &= ~(BIT0 | BIT1);
+
 	// Enable S1 and S2 interrupts
     P4IE |= BIT0 | BIT1;
 
 
-	switch(P4IV)
+	switch(vector)
     {
         // S1
         case P4IV_P4IFG0:
