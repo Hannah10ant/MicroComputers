@@ -582,7 +582,7 @@ void printend()
 void convert_timer(char final[11])
 {
     // how do you convert a integer to its string representation without a standard library ???
-    unsigned long total_time_ms = sys_timer_overflow * 15990.5 + TA0R * 0.244; // maximum value of 4,294,967,295 ms
+    unsigned long total_time_ms = sys_timer_overflow * 15990.5 + TA0R * 1000/4096; // maximum value of 4,294,967,295 ms note that 1000/4096 is just the time in ms for clock ticks
 
     // 0 in ascii is 48
     // 1 in ascii is 49 etc...
