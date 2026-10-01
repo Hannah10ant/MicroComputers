@@ -385,9 +385,9 @@ __interrupt void button_ISR(void)
     // take the system timer TA0R value and then say continue only when > TA0R + 40 ?
     // 
 	volatile unsigned int timer_value = TA0R; // this does not need to be a long (32 bit) TA0R is only 16 bits (int)
-    
+
 	// Disable S1 and S2 interrupts
-    P4IFG &= ~(BIT0 | BIT1);
+    P4IE &= ~(BIT0 | BIT1); // was P4IFG
 
 	while (timer_value < (TA0R+40)){ // infinite loop ???, if you reassign timer_value = TA0R then this is infinite since timer_value always < TA0R + 40
 
