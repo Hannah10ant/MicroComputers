@@ -66,6 +66,9 @@ volatile unsigned int sys_timer_overflow = 0;
 // generic string to store the time string inside, note that maximum value will be 4,294,967,295 ms ~ 4,294,967 sec ~ 71,582 min ~ 1193 hours before unsigned long overflow
 volatile char time[11] = {'0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '\0'}; 
 
+// un-comment if we are going to use a rolling updated time array
+// volatile const char ten_ms[11] = {0, 0, 0, 0, 0, 0, 0, 0, 1, 0, '\0'};
+
 void main(void)
 {    
     WDTCTL = WDTPW + WDTHOLD; // hold watchdog
@@ -676,3 +679,71 @@ void convert_timer(char final[11])
         final[ (2 * idx) + 1 ] = lower_nibble + '0';
     }
 }
+
+// // add 10 ms to the time[11]
+// void update_time_10(void)
+// {
+//     char carry = 0;
+
+//     signed char idx;
+
+//     char current;
+
+//     for (idx = 0; idx < 11; idx++)
+//     {
+//         current = (time[10 - idx] - '0') + ten_ms[10 - idx] + carry;
+//         if (current > 9)
+//         {
+//             current = current - 10;
+//             carry = 1;
+//         }
+//         else
+//         {
+//             carry = 0;
+//         }
+//         time[10 - idx] = current + '0';
+//     }
+// }
+
+// // add fractional TA0R to time[11]
+// void update_time_frac(void)
+// {
+//     // maximum value for 41 ticks is 10 ms
+//     // minimum value for 1 tick is 0.244 ms
+//     // 41 * 1000/4096 already gives the time in ms fairly accurately, can ignore the truncated decimals
+//     unsigned char time_frac = (TA1R * 244) >> 10; // time in ms, note converting to us first to avoid floating point math (expensive) and ...
+//                                                   // then >> 10 for /1024 since /1000 does not give improvement since int drops decimals, and there is never a split within 10 ms where /1000 gives 1.1 and /1024 gives 0.9
+
+//     char frac_ms[11] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '\0'};
+
+//     if (time_frac < 10) // would be very rare for the timer to actually have 41 ticks, so check the more common option first
+//     {
+//         frac_ms[9] = time_frac;
+//     }
+//     else
+//     {
+//         frac_ms[8] = (time_frac / 10); 
+//         frac_ms[9] = (time_frac % 10);
+//     }
+
+//     char carry = 0;
+
+//     signed char idx;
+
+//     char current;
+
+//     for (idx = 0; idx < 11; idx++)
+//     {
+//         current = (time[10 - idx] - '0') + frac_ms[10 - idx] + carry;
+//         if (current > 9)
+//         {
+//             current = current - 10;
+//             carry = 1;
+//         }
+//         else
+//         {
+//             carry = 0;
+//         }
+//         time[10 - idx] = current + '0';
+//     }
+// }
