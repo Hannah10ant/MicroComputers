@@ -63,7 +63,8 @@ volatile unsigned int emergency_timer = 0;
 // how many times has the system timer overflowed, needs an ISR, total time in ms = sys_timer_overflow * 15990.5 + TA0R * 0.244, prob type cast this to int to get whole number for print
 volatile unsigned int sys_timer_overflow = 0;
 
-volatile char time[11] = {'0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '\0'}; // generic string to store the time string inside
+// generic string to store the time string inside, note that maximum value will be 4,294,967,295 ms ~ 4,294,967 sec ~ 71,582 min ~ 1193 hours before unsigned long overflow
+volatile char time[11] = {'0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '\0'}; 
 
 void main(void)
 {    
@@ -83,7 +84,7 @@ void main(void)
     TA1CTL &= ~MC_3;        // turn the 10 ms timer off, so it doesnt break out of LPM before button ISR
     // TA1CTL |= MC_1;         // up mode, this is here to remind of general config after button ISR
 
-    TA1CCR0 = 41;           // Approximately 10 ms at 4096 Hz -> 1/4096 * 41 = 0.01000976 note: prev was 40 -> 1/4096 * 40 = 0.009765 slightly further away from 10 ms, change back if care about overstep
+    TA1CCR0 = 41;           // Approximately 10 ms at 4096 Hz -> 1/4096 * 41 = 0.01000976 note : prev was 40 -> 1/4096 * 40 = 0.009765 slightly further away from 10 ms, change back if care about overstep
 
     // enable timer interrupts
     TA0CTL |= TAIE;
@@ -97,7 +98,7 @@ void main(void)
     CSCTL2 &= ~SELA_7;
 
     // select the input divider for the ACLK to be /1, TA0CTL now has 4.096 kHz / 1 ~ 4.096 kHz
-    CSCTL3 &= ~(0x0700); // need to use 0x0700 here because 0b0000011100000000 is not a standard macro for the CSCTL3 register DIVA bits // alternatively reuse the SELA_7 macro
+    CSCTL3 &= ~(0x0700); // need to use 0x0700 here because 0b0000011100000000 is not a standard macro for the CSCTL3 register DIVA bits
     CSCTL3 |= DIVA_0; // can remove this line since the prev line already clears the DIVA bits so /1 is selected, but for clarity leave it in
 
     //GPIO config
@@ -369,10 +370,9 @@ void main(void)
         // ENTER LOW POWER MODE
         // CPU sleeps here until an interrupt occurs.
         // Timer_A0, running from ACLK, can continue operating.
+        // Timer_A0 interrupts out of this when overflow, Timer_A1 interrupts out of this every 10 ms (after button ISR)
 
-        __low_power_mode_0(); // runs entire while(1) loop once, then falls asleep, while(1) loop is checking which case we are in and setting variables to whatever is needed on the button cases
-                              // since you have not turned off timer interrupts during this (that i can see) the timer ISR will break out of this LPM and rerun the if statements above ~ every 10 ms, consider turning off timer until button ISR
-                              // alternatively (just thought of this after insta msg) we could use LPM4 here instead since that turns off ACLK so that the interrupt doesnt happen, but of course the interrupt every 10 ms method wouldnt work then
+        __low_power_mode_0();
     }
 
 
@@ -409,8 +409,6 @@ __interrupt void button_ISR(void)
     // if button ISR turn on the 10 ms clock
     TA1CTL |= MC_1;
 }
-
-
 
 /// TIMER_A0 CCR0 INTERRUPT
 //
@@ -591,13 +589,13 @@ void convert_timer(char final[11])
     // do 24 % 10 = 4 then 24 / 10 = 2
     // do char str[] = {'0' + 2, '0' + 4, '0' + 6, '0' + 8, '\0'}
 
-    signed char idx;
+    // signed char idx;
 
-    for (idx = 0; idx < 9; idx ++)
-    {
-        final[ 9 - idx ] = (total_time_ms % 10) + '0';
-        total_time_ms = total_time_ms / 10;
-    }
+    // for (idx = 0; idx < 9; idx ++)
+    // {
+    //     final[ 9 - idx ] = (total_time_ms % 10) + '0';
+    //     total_time_ms = total_time_ms / 10;
+    // }
 
     // not a good strategy, msp does not have a inbuilt % operator, and TI suggests avoiding / or % entirely
     // the other thing i found was double dabble, more complex, but apparently cheaper on hardware
@@ -605,124 +603,72 @@ void convert_timer(char final[11])
     // also can maybe get some sort of lookup table implementation, but everything past the above im out of my depth
 
 
+    // double dabble algorithm (yes thats the actual name)
+    // initialize some array for the scratch space
+    // maximum number of characters is 10 * 4 bits per character + 32 bits for total time = 72 bits = 9 bytes
+    unsigned char scratch[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
 
+    // lower 2 bytes
+    scratch[8] = total_time_ms & 0xFF;
+    total_time_ms >>= 8;
+    scratch[7] = total_time_ms & 0xFF;
+    total_time_ms >>= 8;
+    // upper 2 bytes
+    scratch[6] = total_time_ms & 0xFF;
+    total_time_ms >>= 8;
+    scratch[5] = total_time_ms & 0xFF;
+    // total_time is now loaded into the upper elements of the array
 
+    signed char idx;
+    signed char odx;
 
-    // // double dabble algorithm (yes thats the actual name)
-    // // initialize some array for the scratch space
-    // // maximum number of characters is 10 * 4 bits per character + 32 bits for total time = 72 bits = 9 bytes
-    // unsigned char scratch[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+    // need to keep track of the byte thats one lower to get correct shifting
+    unsigned char carry_in = 0;
+    unsigned char carry_out = 0;
 
-    // // lower 2 bytes
-    // scratch[8] = total_time_ms & 0xFF;
-    // total_time_ms >>= 8;
-    // scratch[7] = total_time_ms & 0xFF;
-    // total_time_ms >>= 8;
-    // // upper 2 bytes
-    // scratch[6] = total_time_ms & 0xFF;
-    // total_time_ms >>= 8;
-    // scratch[5] = total_time_ms & 0xFF;
-    // // total_time is now loaded into the upper elements of the array
+    char lower_nibble;
+    char upper_nibble;
 
-    // signed char idx;
-    // signed char odx;
+    while ( (scratch[8] != 0x00) ||
+            (scratch[7] != 0x00) ||
+            (scratch[6] != 0x00) ||
+            (scratch[5] != 0x00) )
+    {
 
-    // // need to keep track of the byte thats one lower to get correct shifting
-    // unsigned char carry_in = 0;
-    // unsigned char carry_out = 0;
-
-    // char lower_nibble;
-    // char upper_nibble;
-
-    // while ( (scratch[8] != 0x00) ||
-    //         (scratch[7] != 0x00) ||
-    //         (scratch[6] != 0x00) ||
-    //         (scratch[5] != 0x00) )
-    // {
-
-    //     for (odx = 0; odx < 5; odx++)
-    //     {
-    //         // check lower nibble
-    //         lower_nibble = scratch[odx] & 0x0F;
-    //         if (lower_nibble >= 5)
-    //         {
-    //             scratch[odx] += 0x03;
-    //         }
+        for (odx = 0; odx < 5; odx++)
+        {
+            // check lower nibble
+            lower_nibble = scratch[odx] & 0x0F;
+            if (lower_nibble >= 5)
+            {
+                scratch[odx] += 0x03;
+            }
             
-    //         // check upper nibble
-    //         upper_nibble = (scratch[odx] >> 4) & 0x0F;
-    //         if (upper_nibble >= 5)
-    //         {
-    //             scratch[odx] += 0x30;
-    //         }
-    //     }
+            // check upper nibble
+            upper_nibble = (scratch[odx] >> 4) & 0x0F;
+            if (upper_nibble >= 5)
+            {
+                scratch[odx] += 0x30;
+            }
+        }
 
-    //     carry_in = 0;
-    //     for (idx = 8; idx >= 0; idx--)
-    //     {
-    //         carry_out = scratch[idx] & 0x80; // is the top bit set, important for carrying over to next byte
-    //         carry_out >>= 7; // place the previous top bit to bottom bit
-    //         scratch[idx] = (scratch[idx] << 1) | carry_in; // shift the byte one left and replace the lowest bit with the highest bit of the previous byte
-    //         carry_in = carry_out;
-    //     }
-    // }
+        carry_in = 0;
+        for (idx = 8; idx >= 0; idx--)
+        {
+            carry_out = scratch[idx] & 0x80; // is the top bit set, important for carrying over to next byte
+            carry_out >>= 7; // place the previous top bit to bottom bit
+            scratch[idx] = (scratch[idx] << 1) | carry_in; // shift the byte one left and replace the lowest bit with the highest bit of the previous byte
+            carry_in = carry_out;
+        }
+    }
 
-    // // scratch[0 - 4] now holds all the values in "decimal"
-    // for (idx = 0; idx < 5; idx++)
-    // {
-    //     lower_nibble = scratch[idx] & 0x0F;
-    //     upper_nibble = scratch[idx] >> 4;
+    // scratch[0 - 4] now holds all the values in "decimal"
+    for (idx = 0; idx < 5; idx++)
+    {
+        lower_nibble = scratch[idx] & 0x0F;
+        upper_nibble = scratch[idx] >> 4;
 
-    //     final[ 2 * idx ] = upper_nibble + '0';
-    //     final[ (2 * idx) + 1 ] = lower_nibble + '0';
-    // }
+        final[ 2 * idx ] = upper_nibble + '0';
+        final[ (2 * idx) + 1 ] = lower_nibble + '0';
+    }
 }
-
-
-// for timer interrupts:
-
-// the timer A0 and timer A1 (configured via TA0CTL and TA1CTL, both should have the same settings) 
-// can set a compare interrupt flag (note below is not functional code, just which bits to set where BIT = 1 and ~BIT = 0)
-
-// TIMER0_A1_VECTOR is the interrupt vector which captures TA0CCR1 CCIFG1, TA0CCR2 CCIFG2, and TA0IFG (from MSP430FR573x Mixed-Signal Microcontrollers document SLAUS639L)
-// note (informative not necessarily useful): TIMER0_A0_VECTOR is for the interrupt from TA0CCR0 CCIFG0 (also from MSP430FR573x Mixed-Signal Microcontrollers document SLAUS639L)
-// TIMER1_A1_VECTOR is the interrupt vector which captures TA1CCR1 CCIFG1, TA1CCR2 CCIFG2, and TA1IFG
-// you can tell by looking at the interrupt vector table and checking the word address of the interrupt and line that up with the macro
-// i.e. TIMER0_A1_VECTOR = 0xFFE8 and TIMER1_A1_VECTOR = 0xFFE0
-
-// TA0CTL = TAIE // set interrupts enabled, note that TA0CTL = TAIFG is the flag thats set when interrupt happens, covered by TIMER0_A1_VECTOR
-// TA1CTL = TAIE // ^^
-// TA0CCTLn = ~CM // do not want a capture mode, also n here is for either 1 or 2, to keep it simple i suggest using 1 only for both timer A0 and timer A1
-// TA1CCTLn = ~CM // ^^
-// TA0CCTLn = ~CAP // do not want a capture mode, this will select compare mode
-// TA1CCTLn = ~CAP // ^^
-// TA0CCTLn = CCIE // do want interrupts from the compare register
-// TA1CCTLn = CCIE // ^^
-// CCIFG // when set an interrupt will be pending, will be set by the register TAxCCTL itself and trigger TIMER0_A1_VECTOR or TIMER1_A1_VECTOR
-// TAxCCRn // holds the compare value for the TAxCCTLn register, write into this the value that should trigger an interrupt
-// 		// for 600 ms count up should be 0x099A, if 150 ms count up should be 0x0267
-//      // also note that for TA1 we could use up mode instead of continuous mode and set TA1CCR0 = 0x099A or 0x0267 to get overflow interrupt, cannot do this on TA0 since TA0CCR0 is the system timer
-// 		// not sure about the == of this, i.e. if a simple set TA0R = (0xFFFF - 0x0267) and check for overflow via TA0CTL = TAIFG flag would be better
-// 		// distinguishing between the timers should be simple given two different interrupt vectors
-// 		// since the normal call should stop when a emergency call occurs, would need to stop the timer A0 with TA0CTL &= ~MC_3 (just noticed i that wrote that wrong in main)
-// 		// this would replace the while((TA0R < number)) in the button_ISR, switch statement would need to go into the timer ISR
-// 		// the while followed by switch could should be swapped for a __low_power_mode_3(); LPM3 has CPU, MCLK, SMCLK, DCO disabled but ACLK still active
-// 		// would have to look at errata but maybe add a __no_operation after entering LPM3 so that it doesnt accidentally reset the counting register?
-
-
-// short thing i noticed while writing the procedure section for lab 4, the UCAxCTLW0 register resets to 0x0001 on start-up
-// this is with the software reset enabled, so if you dont config anything you still need to switch this to 0 to let you do UART or any other serial comms
-
-// below are the interrupt vectors for the two different timers
-
-// timer0 interrupt vector, see above for deets
-// #pragma vector = TIMER0_A1_VECTOR
-// __interrupt void Timer_A1_ISR(void) {
-
-// }
-
-// timer1 interrupt vector, see above for deets
-// #pragma vector = TIMER1_A1_VECTOR
-// __interrupt void Timer_A0_ISR(void) {
-
-// }
