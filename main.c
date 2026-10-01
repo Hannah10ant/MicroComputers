@@ -376,8 +376,6 @@ void main(void)
         __low_power_mode_0();
     }
 
-
-    return 0;
 }
 
 // this is were im the most unsure - but using this methood means the most coding is done above yes? // well, yes...
