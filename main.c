@@ -66,8 +66,6 @@ volatile unsigned int sys_timer_overflow = 0;
 // generic string to store the time string inside, note that maximum value will be 4,294,967,295 ms ~ 4,294,967 sec ~ 71,582 min ~ 1193 hours before unsigned long overflow
 volatile char time[11] = {'0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '\0'}; 
 
-// un-comment if we are going to use a rolling updated time array
-// volatile const char ten_ms[11] = {0, 0, 0, 0, 0, 0, 0, 0, 1, 0, '\0'};
 
 void main(void)
 {    
