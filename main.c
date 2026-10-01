@@ -546,7 +546,7 @@ __interrupt void Timer1_A0_ISR(void)
     }
 }
 
-#pragma vector = TIMER0_A0_VECTOR
+#pragma vector = TIMER0_A1_VECTOR // Used to be A0
 __interrupt void Timer0_A0_ISR(void)
 {
     // dont think there is anything else to do in here?
