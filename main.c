@@ -441,7 +441,7 @@ __interrupt void button_ISR(void)
 
 //     volatile unsigned int final_timer = TA0R + 40;
 
-//     while ( (TA0R - final_timer) < 0) {
+//     while ( TA0R < final_timer ) {
 
 //     }
 
