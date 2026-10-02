@@ -125,7 +125,7 @@ void main(void)
     // Clear any existing interrupt flags
     P4IFG &= ~(BIT0 | BIT1);
 
-    // Enable S1 and S2 interrupts
+    // Enable S1 and S2 interrupts (comment this out if using new button ISR)
     P4IE |= BIT0 | BIT1;
 
     // initalisze
@@ -366,6 +366,10 @@ void main(void)
             }
         }
 
+        // for new button ISR
+        // P4IE |= BIT0 | BIT1;
+
+        // __no_operation();
 
         // ENTER LOW POWER MODE
         // CPU sleeps here until an interrupt occurs.
@@ -428,6 +432,36 @@ __interrupt void button_ISR(void)
     // if button ISR turn on the 10 ms clock
     TA1CTL |= MC_1;
 }
+
+// __interrupt void button_ISR(void)
+// {
+//     P4IE &= ~(BIT0 | BIT1); // turn off button interrupts
+
+//     unsigned int port_interrupts = P4IFG; // take note of the initial state of the interrupt flags at ISR start, due to button debouncing
+
+//     volatile unsigned int final_timer = TA0R + 40;
+
+//     while ( (TA0R - final_timer) < 0) {
+
+//     }
+
+//     if ( port_interrupts == BIT1 || port_interrupts == (BIT0 | BIT1) )  // if switch 2 has an event, consider case where setting flags is not yet done and button ISR occurs
+//     {
+//         S2_event = TRUE; // set the S2 event to true
+//         P4IFG &= ~(BIT0 | BIT1); // if there is a switch 1 event at the same time, ignore it and reset the button flag
+//     }
+//     else if ( port_interrupts == BIT0 ) // dont include the case where both are on, also an if statement so that this is skipped, switch statement doesnt work because S1 has higher priority than S2
+//     {
+//         S1_event = TRUE;
+//         P4IFG &= ~BIT0; // just reset the switch 1 bit since this case shouldnt be accessible if both S1 and S2 are set, and if it is set need to wait for flags to be set anyway
+//     }
+
+//     // reset the P4IV to allow another interrupt
+//     P4IV = 0x00;
+
+//     // turning on button interrupts here is intentionally left out
+
+// }
 
 /// TIMER_A0 CCR0 INTERRUPT
 //
