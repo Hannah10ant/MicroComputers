@@ -67,7 +67,7 @@ void printend()
 void convert_timer(volatile char final[11])
 {
     // how do you convert a integer to its string representation without a standard library ???
-    unsigned long total_time_ms = ((unsigned long)sys_timer_overflow) * 15000 + ((unsigned long)TA0R * 1000)/4096; // maximum value of 4,294,967,295 ms note that 1000/4096 is just the time in ms for clock ticks, overflow issue here
+    unsigned long total_time_ms = ((unsigned long)sys_timer_overflow) * 15000 + (((unsigned long)TA0R * 1000)>>12); // maximum value of 4,294,967,295 ms note that 1000/4096 is just the time in ms for clock ticks, overflow issue here hence longs, >>12 is just /4096
 
     // double dabble algorithm (yes thats the actual name)
     // initialize some array for the scratch space
