@@ -271,6 +271,9 @@ __interrupt void button_ISR(void)
 
                 // toggle LEDs to on, note not an XOR here, thats in the timer interrupt
                 P3OUT |= LED5 | LED6 | LED7 | LED8;
+
+                // UART logging
+
                 break;
 
             case EMERGENCY:
@@ -306,6 +309,9 @@ __interrupt void button_ISR(void)
 
                     // turn off emergency LEDs
                     P3OUT &= ~(LED5 | LED6 | LED7 | LED8);
+
+                    // UART logging
+
                 }
                 else // normal_suspended == FALSE
                 {
@@ -325,6 +331,9 @@ __interrupt void button_ISR(void)
 
                     // turn off LEDs
                     P3OUT &= ~(LED5 | LED6 | LED7 | LED8);
+
+                    // UART logging
+
                 }
 
                 break;
@@ -358,6 +367,9 @@ __interrupt void button_ISR(void)
 
                 // turn on LEDs
                 P3OUT |= LED5 | LED6 | LED7 | LED8;
+
+                // UART logging
+
                 break;
 
             default:
@@ -401,6 +413,8 @@ __interrupt void button_ISR(void)
                 PJOUT = LED1;
                 S1_LED_state = 1;
 
+                // UART logging
+
                 break;
             case NORMAL:
                 // exit normal operation
@@ -422,11 +436,15 @@ __interrupt void button_ISR(void)
                 // turn off all LEDs
                 PJOUT &= ~(LED1 | LED2 | LED3 | LED4);
 
+                // UART logging
+
                 break;
             case EMERGENCY:
-                
+
                 __no_operation();
-            
+
+                // UART logging
+
                 break;
             default:
                 break;
