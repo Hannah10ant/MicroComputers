@@ -460,6 +460,8 @@ __interrupt void button_ISR(void)
 
     // turning on button interrupts here is intentionally left out
 
+    TA1CTL |= MC_1;
+
     // when exiting the interrupt also turn off the low power mode so flags can be set, dont want this on the timer interrupts though
     __bic_SR_register_on_exit(LPM0_bits);
 
