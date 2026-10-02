@@ -456,8 +456,8 @@ __interrupt void button_ISR(void)
 //         P4IFG &= ~BIT0; // just reset the switch 1 bit since this case shouldnt be accessible if both S1 and S2 are set, and if it is set need to wait for flags to be set anyway
 //     }
 
-//     // reset the P4IV to allow another interrupt
-//     P4IV = 0x00;
+//     // reset the P4IV to allow another interrupt by reading from it
+//     port_interrupts = P4IV;
 
 //     // turning on button interrupts here is intentionally left out
 
