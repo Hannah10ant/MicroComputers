@@ -273,6 +273,11 @@ __interrupt void button_ISR(void)
                 P3OUT |= LED5 | LED6 | LED7 | LED8;
 
                 // UART logging
+                printstr("[ ");
+                convert_timer(time);
+                printstr(time);
+                printstr(" ms ] S2 -> EMERGENCY CALL : EXIT IDLE\n");
+                printend();
 
                 break;
 
@@ -311,6 +316,12 @@ __interrupt void button_ISR(void)
                     P3OUT &= ~(LED5 | LED6 | LED7 | LED8);
 
                     // UART logging
+                    printstr("[ ");
+                    convert_timer(time);
+                    printstr(time);
+                    printstr(" ms ] S2 -> EXIT EMERGENCY CALL : RESUME NORMAL CALL\n");
+                    printend();
+
 
                 }
                 else // normal_suspended == FALSE
@@ -333,6 +344,11 @@ __interrupt void button_ISR(void)
                     P3OUT &= ~(LED5 | LED6 | LED7 | LED8);
 
                     // UART logging
+                    printstr("[ ");
+                    convert_timer(time);
+                    printstr(time);
+                    printstr(" ms ] S2 -> EMERGENCY CALL COMPLETE\n");
+                    printend();
 
                 }
 
@@ -369,6 +385,11 @@ __interrupt void button_ISR(void)
                 P3OUT |= LED5 | LED6 | LED7 | LED8;
 
                 // UART logging
+                printstr("[ ");
+                convert_timer(time);
+                printstr(time);
+                printstr(" ms ] S2 -> EMERGENCY CALL : SUSPEND NORMAL CALL\n");
+                printend();
 
                 break;
 
@@ -414,6 +435,11 @@ __interrupt void button_ISR(void)
                 S1_LED_state = 1;
 
                 // UART logging
+                printstr("[ ");
+                convert_timer(time);
+                printstr(time);
+                printstr(" ms ] S1 -> NORMAL CALL : EXIT IDLE\n");
+                printend();
 
                 break;
             case NORMAL:
@@ -437,6 +463,11 @@ __interrupt void button_ISR(void)
                 PJOUT &= ~(LED1 | LED2 | LED3 | LED4);
 
                 // UART logging
+                printstr("[ ");
+                convert_timer(time);
+                printstr(time);
+                printstr(" ms ] S1 -> NORMAL CALL COMPLETE\n");
+                printend();
 
                 break;
             case EMERGENCY:
@@ -444,6 +475,11 @@ __interrupt void button_ISR(void)
                 __no_operation();
 
                 // UART logging
+                printstr("[ ");
+                convert_timer(time);
+                printstr(time);
+                printstr(" ms ] S1 -> NORMAL CALL IGNORED : EMERGENCY CALL ACTIVE\n");
+                printend();
 
                 break;
             default:
