@@ -126,7 +126,7 @@ void main(void)
     P4IFG &= ~(BIT0 | BIT1);
 
     // Enable S1 and S2 interrupts (comment this out if using new button ISR)
-    P4IE |= BIT0 | BIT1;
+    // P4IE |= BIT0 | BIT1;
 
     // initalisze
     // All LEDs OFF
@@ -366,10 +366,10 @@ void main(void)
             }
         }
 
-        // for new button ISR
-        // P4IE |= BIT0 | BIT1;
+        for new button ISR
+        P4IE |= BIT0 | BIT1;
 
-        // __no_operation();
+        __no_operation();
 
         // ENTER LOW POWER MODE
         // CPU sleeps here until an interrupt occurs.
@@ -383,84 +383,87 @@ void main(void)
 
 // this is were im the most unsure - but using this methood means the most coding is done above yes? // well, yes...
 #pragma vector = PORT4_VECTOR
-__interrupt void button_ISR(void)
-{
-    // button debouncing in here?
-    // take the system timer TA0R value and then say continue only when > TA0R + 40 ?
-    // 
-	volatile unsigned int timer_value = TA0R; // this does not need to be a long (32 bit) TA0R is only 16 bits (int)
-
-    unsigned int vector = P4IV;
-
-	// Disable S1 and S2 interrupts
-    P4IE &= ~(BIT0 | BIT1); // was P4IFG
-
-	while (timer_value < (TA0R+40)){ // infinite loop ???, if you reassign timer_value = TA0R then this is infinite since timer_value always < TA0R + 40, also case where TA0R + 40 overflows
-
-	}
-    
-    // discard bounce flags, this wipes P4IV, need to take note of what P4IV is before this
-    P4IFG &= ~(BIT0 | BIT1);
-
-	// Enable S1 and S2 interrupts
-    P4IE |= BIT0 | BIT1;
-
-
-	switch(vector)
-    {
-        // S1
-        case P4IV_P4IFG0:
-
-            S1_event = 1;
-
-            break;
-
-        // s2
-        case P4IV_P4IFG1:
-
-            S2_event = 1;
-
-            break;
-
-        // else
-
-        default:
-
-            break;
-    }
-
-    // if button ISR turn on the 10 ms clock
-    TA1CTL |= MC_1;
-}
-
 // __interrupt void button_ISR(void)
 // {
-//     P4IE &= ~(BIT0 | BIT1); // turn off button interrupts
+//     // button debouncing in here?
+//     // take the system timer TA0R value and then say continue only when > TA0R + 40 ?
+//     // 
+// 	volatile unsigned int timer_value = TA0R; // this does not need to be a long (32 bit) TA0R is only 16 bits (int)
 
-//     unsigned int port_interrupts = P4IFG; // take note of the initial state of the interrupt flags at ISR start, due to button debouncing
+//     unsigned int vector = P4IV;
 
-//     volatile unsigned int final_timer = TA0R + 40;
+// 	// Disable S1 and S2 interrupts
+//     P4IE &= ~(BIT0 | BIT1); // was P4IFG
 
-//     while ( TA0R < final_timer ) {
+// 	while (timer_value < (TA0R+40)){ // infinite loop ???, if you reassign timer_value = TA0R then this is infinite since timer_value always < TA0R + 40, also case where TA0R + 40 overflows
 
-//     }
+// 	}
+    
+//     // discard bounce flags, this wipes P4IV, need to take note of what P4IV is before this
+//     P4IFG &= ~(BIT0 | BIT1);
 
-//     if ( port_interrupts == BIT1 || port_interrupts == (BIT0 | BIT1) )  // if switch 2 has an event, consider case where setting flags is not yet done and button ISR occurs
+// 	// Enable S1 and S2 interrupts
+//     P4IE |= BIT0 | BIT1;
+
+
+// 	switch(vector)
 //     {
-//         S2_event = TRUE; // set the S2 event to true
-//         P4IFG &= ~(BIT0 | BIT1); // if there is a switch 1 event at the same time, ignore it and reset the button flag
+//         // S1
+//         case P4IV_P4IFG0:
+
+//             S1_event = 1;
+
+//             break;
+
+//         // s2
+//         case P4IV_P4IFG1:
+
+//             S2_event = 1;
+
+//             break;
+
+//         // else
+
+//         default:
+
+//             break;
 //     }
-//     else if ( port_interrupts == BIT0 ) // dont include the case where both are on, also an if statement so that this is skipped, switch statement doesnt work because S1 has higher priority than S2
-//     {
-//         S1_event = TRUE;
-//         P4IFG &= ~BIT0; // just reset the switch 1 bit since this case shouldnt be accessible if both S1 and S2 are set, and if it is set need to wait for flags to be set anyway
-//     }
 
-//     // dont bother with P4IV, if read from will clear the highest priority flag which do not want
-
-//     // turning on button interrupts here is intentionally left out
-
+//     // if button ISR turn on the 10 ms clock
+//     TA1CTL |= MC_1;
 // }
+
+__interrupt void button_ISR(void)
+{
+    P4IE &= ~(BIT0 | BIT1); // turn off button interrupts
+
+    unsigned int port_interrupts = P4IFG; // take note of the initial state of the interrupt flags at ISR start, due to button debouncing
+
+    volatile unsigned int final_timer = TA0R + 40;
+
+    while ( (unsigned int)(TA0R - final_timer) < 40 ) {
+
+    }
+
+    if ( port_interrupts == BIT1 || port_interrupts == (BIT0 | BIT1) )  // if switch 2 has an event, consider case where setting flags is not yet done and button ISR occurs
+    {
+        S2_event = TRUE; // set the S2 event to true
+        P4IFG &= ~(BIT0 | BIT1); // if there is a switch 1 event at the same time, ignore it and reset the button flag
+    }
+    else if ( port_interrupts == BIT0 ) // dont include the case where both are on, also an if statement so that this is skipped, switch statement doesnt work because S1 has higher priority than S2
+    {
+        S1_event = TRUE;
+        P4IFG &= ~BIT0; // just reset the switch 1 bit since this case shouldnt be accessible if both S1 and S2 are set, and if it is set need to wait for flags to be set anyway
+    }
+
+    // dont bother with P4IV, if read from will clear the highest priority flag which do not want
+
+    // turning on button interrupts here is intentionally left out
+
+    // when exiting the interrupt also turn off the low power mode so flags can be set, dont want this on the timer interrupts though
+    __bic_SR_register_on_exit(LPM0_bits);
+
+}
 
 /// TIMER_A0 CCR0 INTERRUPT
 //
@@ -632,7 +635,7 @@ void printend()
 void convert_timer(volatile char final[11])
 {
     // how do you convert a integer to its string representation without a standard library ???
-    unsigned long total_time_ms = ((unsigned long)sys_timer_overflow) * 15990.5 + ((unsigned long)TA0R * 1000)/4096; // maximum value of 4,294,967,295 ms note that 1000/4096 is just the time in ms for clock ticks, overflow issue here
+    unsigned long total_time_ms = ((unsigned long)sys_timer_overflow) * 15991 + ((unsigned long)TA0R * 1000)/4096; // maximum value of 4,294,967,295 ms note that 1000/4096 is just the time in ms for clock ticks, overflow issue here
 
     // 0 in ascii is 48
     // 1 in ascii is 49 etc...
