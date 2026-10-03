@@ -487,6 +487,9 @@ __interrupt void button_ISR(void)
 
                 __no_operation();
 
+                // S1 is intentionally ignored during an emergency because EMERGENNCY has priority over NORMAL
+                // TODO: Confirm that the S1 interrupt flag is clleared corrrectly so that the ignored button press does not get processed after the emergency.
+
                 // UART logging
                 printstr("[ ");
                 convert_timer(time);
