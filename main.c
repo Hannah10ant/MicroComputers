@@ -368,7 +368,6 @@ void main(void)
 
         for new button ISR
         P4IE |= BIT0 | BIT1;
-
         __no_operation();
 
         // ENTER LOW POWER MODE
