@@ -27,6 +27,7 @@ volatile unsigned char normal_suspended = FALSE;
 
 // remember how many ticks there were in timer if emergency
 unsigned int normal_timer_mem = 0;
+// !!!!!!!!! TODO: Check whether this should be volatile since it is modified/read as part of interrupt-driven state changes.
 
 // this is the normal call state
 // Keeps track of which normal LED is currently active.
@@ -39,9 +40,11 @@ volatile unsigned char S1_LED_state = 0;
 
 // how many times has the system timer overflowed, needs an ISR, total time in ms = sys_timer_overflow * 15990.5 + TA0R * 0.244, prob type cast this to int to get whole number for print
 volatile unsigned int sys_timer_overflow = 0;
+// !!!!!!!!!!  TODO: The comment says ~15990.5 ms per overflow, but convert_timer() currently uses 15000 ms. These might need to match the acual TA0CCR0 timing.
 
 // generic string to store the time string inside, note that maximum value will be 4,294,967,295 ms ~ 4,294,967 sec ~ 71,582 min ~ 1193 hours before unsigned long overflow
 volatile char time[11] = {'0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '\0'}; 
+// TODO: Make sure convert_timer() always writes the final '\0'. printstr() relies on this to know where the string ends - debugging
 
 void printstr(volatile char * str) 
 {
@@ -52,6 +55,11 @@ void printstr(volatile char * str)
 
         i++; // increment index
     
+        // Hannah's notes, feel free to disgrard if doesnt apply
+        // TODO: Check this parameter type.
+        // time[] is a character array, so this function may need to receive a char* rather than a char**.
+
+        // Also note that UART transmission is currently polling-based (im pre sure) and The assignment architecture may require a UART TX ISR according to outline
     }
 }
 
@@ -67,6 +75,7 @@ void printend()
 void convert_timer(volatile char final[11])
 {
     // how do you convert a integer to its string representation without a standard library ???
+    // !!!!!!!!!! TODO: Verify 15000 against the actual TA0CCR0 period TA0CCR0 and this calculation must represent the same amount of time, otherwise UART timestamps will drift............
     unsigned long total_time_ms = ((unsigned long)sys_timer_overflow) * 15000 + (((unsigned long)TA0R * 1000)>>12); // maximum value of 4,294,967,295 ms note that 1000/4096 is just the time in ms for clock ticks, overflow issue here hence longs, >>12 is just /4096
 
     // double dabble algorithm (yes thats the actual name)
@@ -137,6 +146,7 @@ void convert_timer(volatile char final[11])
         final[ 2 * idx ] = upper_nibble + '0';
         final[ (2 * idx) + 1 ] = lower_nibble + '0';
     }
+     // TODO: Make sure final[10] = '\0' is set before returning printstr() expects the timestamp to be null-terminated :p
 }
 
 void initial()
@@ -155,6 +165,7 @@ void initial()
     TA0CTL |= TASSEL_1; // ACLK
     TA0CTL |= ID_3; // /8 -> 4,096 Hz
     TA0CTL |= TACLR; // clear TA0R to start from known
+   // Hannah TODO: Check the assignment requirements regarding Timer_A0.....
 
     TA0CCR0 = 61441; // the timer will overflow at ~ exactly 15 sec, note 61440 + 1 since up mode will count one extra tick before overflow flag
     TA0CCTL0 &= ~(CM_3 | CAP); // no capture
@@ -237,6 +248,8 @@ __interrupt void button_ISR(void)
     {
         __no_operation();
     }
+    // ^^^: This is currently a blocking delay inside the button ISR The CPU cannot handle other interrupt work normally while this is running !
+    // Consider changing the debounce to use timer-based timing maybeee
 
     // change the state of timers i.e. load different values into TA1CCTL0 for TA0CCR0 interrupts to TIMER1_A0_VECTOR
     if ( ( port_interrupts & BIT1 ) ) // this will detect both cases of S2 alone and S1 with S2 giving S2 priority
