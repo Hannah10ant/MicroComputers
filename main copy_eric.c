@@ -165,6 +165,7 @@ void initial()
     TA0CTL = 0x0000;
     TA1CTL = 0x0000;
 
+    CSCTL0 = CSKEY;
     CSCTL2 &= ~SELA_7; // ACLK source is XT1CLK ~ 32,768 Hz
     CSCTL3 &= ~(0x0700); // ACLK input divider /1
 
@@ -187,6 +188,7 @@ void initial()
         CSCTL5 &= ~XT1OFFG; // XT1 fault flag
         SFRIFG1 &= ~OFIFG; // general oscillator fault flag
     } while (SFRIFG1 & OFIFG);
+    CSCTL0_H = 0;
 
     TA0CTL |= MC_1; // up mode
 
