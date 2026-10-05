@@ -10,186 +10,618 @@
 #define LED7 0x40
 #define LED8 0x80
 
-// switch 1 state, keeps track of which LEDs to turn on
-char S1_state;
+// consider for readability
+#define FALSE 0
+#define TRUE !FALSE
 
-// switch 2 state, keeps track of which LEDs to turn on
-char S2_state;
+// define task states
+#define IDLE       0
+#define NORMAL     1
+#define EMERGENCY  2
+
+// tracks which process has priority
+volatile unsigned char current_task = IDLE;
+
+// used to remeber wether normal call was running beofre emeergancy
+volatile unsigned char normal_suspended = FALSE;
+
+// remember how many ticks there were in timer if emergency
+volatile unsigned int normal_timer_mem = 0;
+// !!!!!!!!! TODO: Check whether this should be volatile since it is modified/read as part of interrupt-driven state changes. // ig just make it volatile
+
+// this is the normal call state
+// Keeps track of which normal LED is currently active.
+//
+// 0 = LED1
+// 1 = LED2
+// 2 = LED3
+// 3 = LED4
+volatile unsigned char S1_LED_state = 0;
+
+// how many times has the system timer overflowed, needs an ISR, total time in ms = sys_timer_overflow * 15000 + TA0R * 0.244, prob type cast this to int to get whole number for print
+volatile unsigned int sys_timer_overflow = 0;
+// !!!!!!!!!!  TODO: The comment says ~15990.5 ms per overflow, but convert_timer() currently uses 15000 ms. These might need to match the acual TA0CCR0 timing. // this comment (above) was not updated, see initial() TA0 setup for more detail
+
+// generic string to store the time string inside, note that maximum value will be 4,294,967,295 ms ~ 4,294,967 sec ~ 71,582 min ~ 1193 hours before unsigned long overflow
+volatile char time[11] = {'0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '\0'}; 
+// TODO: Make sure convert_timer() always writes the final '\0'. printstr() relies on this to know where the string ends - debugging // final loop in convert timer only goes up to time[9] while leaving time[10] untouched, can always include time[10] = '\0' if wanted
+
+void printstr(volatile char * str) 
+{
+    char i = 0;
+    while (str[i] != '\0') { // check if end of string
+        UCA0TXBUF = str[i]; // load character into transmitter buffer
+        while (UCA0STATW & UCBUSY); // check whether the transmitter is busy sending a char
+
+        i++; // increment index
+    
+        // Hannah's notes, feel free to disgrard if doesnt apply
+        // TODO: Check this parameter type.
+        // time[] is a character array, so this function may need to receive a char* rather than a char**. // was already receiveing a char* ? time is not array of strings ( char** )
+
+        // Also note that UART transmission is currently polling-based (im pre sure) and The assignment architecture may require a UART TX ISR according to outline // not sure how to convert this to an interrupt :(
+    }
+}
+
+void printend() 
+{
+    UCA0TXBUF = 0x0A; // 0x0A is '\n' i.e. print a newline on the output
+    while (UCA0STATW & UCBUSY); // wait for this to be sent
+
+    UCA0TXBUF = 0x0D; // 0x0D is '\r' carrige return, goes back to the start of the newline 
+    while (UCA0STATW & UCBUSY); // wait for this to be sent
+}
+
+void convert_timer(volatile char final[11])
+{
+    // how do you convert a integer to its string representation without a standard library ???
+    // !!!!!!!!!! TODO: Verify 15000 against the actual TA0CCR0 period TA0CCR0 and this calculation must represent the same amount of time, otherwise UART timestamps will drift............ // TA0CCR0 set to 61440 - 1 which at 4096 Hz ~ 61440/4096 = 15 sec
+    unsigned long total_time_ms = ((unsigned long)sys_timer_overflow) * 15000 + (((unsigned long)TA0R * 1000)>>12); // maximum value of 4,294,967,295 ms note that 1000/4096 is just the time in ms for clock ticks, overflow issue here hence longs, >>12 is just /4096
+
+    // double dabble algorithm (yes thats the actual name)
+    // initialize some array for the scratch space
+    // maximum number of characters is 10 * 4 bits per character + 32 bits for total time = 72 bits = 9 bytes
+    unsigned char scratch[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+    // lower 2 bytes
+    scratch[8] = total_time_ms & 0xFF;
+    total_time_ms >>= 8;
+    scratch[7] = total_time_ms & 0xFF;
+    total_time_ms >>= 8;
+    // upper 2 bytes
+    scratch[6] = total_time_ms & 0xFF;
+    total_time_ms >>= 8;
+    scratch[5] = total_time_ms & 0xFF;
+    // total_time is now loaded into the upper elements of the array
+
+    signed char idx;
+    signed char odx;
+
+    // need to keep track of the byte thats one lower to get correct shifting
+    unsigned char carry_in = 0;
+    unsigned char carry_out = 0;
+
+    char lower_nibble;
+    char upper_nibble;
+
+    while ( (scratch[8] != 0x00) ||
+            (scratch[7] != 0x00) ||
+            (scratch[6] != 0x00) ||
+            (scratch[5] != 0x00) )
+    {
+
+        for (odx = 0; odx < 5; odx++)
+        {
+            // check lower nibble
+            lower_nibble = scratch[odx] & 0x0F;
+            if (lower_nibble >= 5)
+            {
+                scratch[odx] += 0x03;
+            }
+            
+            // check upper nibble
+            upper_nibble = (scratch[odx] >> 4) & 0x0F;
+            if (upper_nibble >= 5)
+            {
+                scratch[odx] += 0x30;
+            }
+        }
+
+        carry_in = 0;
+        for (idx = 8; idx >= 0; idx--)
+        {
+            carry_out = scratch[idx] & 0x80; // is the top bit set, important for carrying over to next byte
+            carry_out >>= 7; // place the previous top bit to bottom bit
+            scratch[idx] = (scratch[idx] << 1) | carry_in; // shift the byte one left and replace the lowest bit with the highest bit of the previous byte
+            carry_in = carry_out;
+        }
+    }
+
+    // scratch[0 - 4] now holds all the values in "decimal"
+    for (idx = 0; idx < 5; idx++)
+    {
+        lower_nibble = scratch[idx] & 0x0F;
+        upper_nibble = scratch[idx] >> 4;
+
+        final[ 2 * idx ] = upper_nibble + '0';
+        final[ (2 * idx) + 1 ] = lower_nibble + '0';
+    }
+     // TODO: Make sure final[10] = '\0' is set before returning printstr() expects the timestamp to be null-terminated :p // if wanted can add final[10] = '\0', but this for loop only goes to final[ (2 * 4) + 1 ] = final[9]
+}
+
+void initial()
+{
+    // hold watchdog
+    WDTCTL = WDTPW + WDTHOLD;
+
+    TA0CTL = 0x0000;
+    TA1CTL = 0x0000;
+
+    CSCTL0 = CSKEY;                       // unlock CS
+    CSCTL4 &= ~XT1OFF;                     // make sure XT1 is on
+    CSCTL2 = SELA__XT1CLK | SELS__DCOCLK | SELM__DCOCLK;
+    CSCTL3 &= ~(0x0700); // ACLK input divider /1
+    CSCTL4 &= ~XT1DRIVE_3;
+    CSCTL4 &= ~XTS;
+    CSCTL0_H = 0;
+
+    // timer 0
+    TA0CTL &= ~MC_3; // turn the timer off to ensure stable config
+    TA0CTL |= TASSEL_1; // ACLK
+    TA0CTL |= ID_3; // /8 -> 4,096 Hz
+    TA0CTL |= TACLR; // clear TA0R to start from known
+   // Hannah TODO: Check the assignment requirements regarding Timer_A0..... 
+
+    TA0CCR0 = 15000; // the timer will overflow at ~ exactly 15 sec, note 61440 - 1 since up mode will count one extra tick before overflow flag // changed this due to comment in top of convert_timer
+    TA0CCTL0 &= ~(CM_3 | CAP); // no capture
+    TA0CCTL0 |= CCIE; // interrupt on control register enabled
+
+    // turn timers on
+    TA0CTL |= MC_1; // up mode
+
+    // timer 1
+    TA1CTL &= ~MC_3; // turn the timer off to ensure stable config
+    TA1CTL |= TASSEL_1; // ACLK
+    TA1CTL |= ID_3; // /8 -> 4,096 Hz
+    TA1CTL |= TACLR; // clear TA0R to start from known
+
+    TA1CCTL0 &= ~(CM_3 | CAP); // no capture
+
+    // GPIO configs
+    PJDIR = 0x0F;
+    P3DIR = 0xF0;
+    P4DIR = 0x00; // S1 and S2
+
+    // enable pull up on buttons for active low
+    P4REN |= BIT0 | BIT1;
+    P4OUT |= BIT0 | BIT1;
+
+    // interrupt on high to low
+    P4IES |= BIT0 | BIT1;
+
+    // clear existing interrupt flags
+    P4IFG &= ~(BIT0 | BIT1);
+
+    // reset LEDs to known value
+    PJOUT &= ~( LED1 | LED2 | LED3 | LED4 );
+    P3OUT &= ~( LED5 | LED6 | LED7 | LED8 );
+
+    // UART settings, 9600 baud from 1 MHz DCO CLK
+    P2SEL1 = BIT0 | BIT1; 
+    UCA0CTL1 = UCSSEL_2 | UCSWRST;
+    UCA0BRW = 6;
+    UCA0MCTLW = 0x2081;
+    UCA0CTL1 &= ~UCSWRST;
+
+    // enable button interrupts
+    P4IE |= BIT0 | BIT1;
+
+    __bis_SR_register(GIE);
+
+}
 
 void main(void)
 {
-	
-	WDTCTL = WDTPW + WDTHOLD; // hold watchdog
+    // hold watchdog
+    WDTCTL = WDTPW + WDTHOLD;
 
-	// timer config
-	TA0CTL = 0x00;
+    TA0CTL = 0x0000;
+    TA1CTL = 0x0000;
 
-	// want the timer from ACLK to be out of the way, also will want to configure ACLK to be sourced from XT1CLK ~ 32.768 kHz since i need 0.5 sec delays
-	TA0CTL |= TASSEL_1;
+    CSCTL0 = CSKEY;                       // unlock CS
+    CSCTL4 &= ~XT1OFF;                     // make sure XT1 is on
+    CSCTL2 = SELA__XT1CLK | SELS__DCOCLK | SELM__DCOCLK;
+    CSCTL3 &= ~(0x0700); // ACLK input divider /1
+    CSCTL4 &= ~XT1DRIVE_3;
+    CSCTL4 &= ~XTS;
+    CSCTL0_H = 0;
 
-	// input divider to /8 again slow delays, 32.768 kHz / 8 ~ 4.096 kHz note this will be changed again later to be slower again 
-	TA0CTL |= ID_3;
+    // timer 0
+    TA0CTL &= ~MC_3; // turn the timer off to ensure stable config
+    TA0CTL |= TASSEL_1; // ACLK
+    TA0CTL |= ID_3; // /8 -> 4,096 Hz
+    TA0CTL |= TACLR; // clear TA0R to start from known
+   // Hannah TODO: Check the assignment requirements regarding Timer_A0..... 
 
-	// set the mode control to stop the timer, and start the timer again when needing a delay
-	TA0CTL &= ~MC_3;
+    TA0CCR0 = 15000; // the timer will overflow at ~ exactly 15 sec, note 61440 - 1 since up mode will count one extra tick before overflow flag // changed this due to comment in top of convert_timer
+    TA0CCTL0 &= ~(CM_3 | CAP); // no capture
+    TA0CCTL0 |= CCIE; // interrupt on control register enabled
 
-	// select the source for ACLK to be XT1CLK ~ 32 kHz, AND mask op since XT1CLK is 000b
-	CSCTL2 &= ~SELA_7;
+    // turn timers on
+    TA0CTL |= MC_1; // up mode
 
-	// select the input divider for the ACLK to be /1, TA0CTL now has 4.096 kHz / 1 ~ 4.096 kHz
-	CSCTL3 &= ~(0x0700) // need to use 0x0700 here because 0b0000011100000000 is not a standard macro for the CSCTL3 register DIVA bits
-	CSCTL3 |= DIVA_0; // can remove this line since the prev line already clears the DIVA bits so /1 is selected, but for clarity leave it in
+    // timer 1
+    TA1CTL &= ~MC_3; // turn the timer off to ensure stable config
+    TA1CTL |= TASSEL_1; // ACLK
+    TA1CTL |= ID_3; // /8 -> 4,096 Hz
+    TA1CTL |= TACLR; // clear TA0R to start from known
 
-	// configure outputs and inputs
-	PJDIR = 0x0F; // lower nibble for PJ
-	P3DIR = 0xF0; // upper nibble for P3
-	P4DIR = 0x00; // buttons are inputs, 0 is used for inputs
+    TA1CCTL0 &= ~(CM_3 | CAP); // no capture
 
-	__bis_SR_register(GIE); // enable general interrupts
+    // GPIO configs
+    PJDIR = 0x0F;
+    P3DIR = 0xF0;
+    P4DIR = 0x00; // S1 and S2
 
-	P4IE |= BIT0 | BIT1; // enable interrupts from port 4
+    // enable pull up on buttons for active low
+    P4REN |= BIT0 | BIT1;
+    P4OUT |= BIT0 | BIT1;
 
-	while(1) {
+    // interrupt on high to low
+    P4IES |= BIT0 | BIT1;
 
-		__low_power_mode_4(); // use LMP4 because this disables all the clock sources, since we are not using a clock based interrupt to init anything
-	
-	}
+    // clear existing interrupt flags
+    P4IFG &= ~(BIT0 | BIT1);
+
+    // reset LEDs to known value
+    PJOUT &= ~( LED1 | LED2 | LED3 | LED4 );
+    P3OUT &= ~( LED5 | LED6 | LED7 | LED8 );
+
+    // UART settings, 9600 baud from 1 MHz DCO CLK
+    P2SEL1 = BIT0 | BIT1; 
+    UCA0CTL1 = UCSSEL_2 | UCSWRST;
+    UCA0BRW = 6;
+    UCA0MCTLW = 0x2081;
+    UCA0CTL1 &= ~UCSWRST;
+
+    // enable button interrupts
+    P4IE |= BIT0 | BIT1;
+
+    __bis_SR_register(GIE);
 
 
-	return 0;
+    while(1)
+    {
+        __low_power_mode_0();
+    }
 }
 
 #pragma vector = PORT4_VECTOR
-__interrupt void button_ISR(void) {
-	switch(P4IV) {
-		case P4IV_P4IFG0:
-			// button debouncing, not sure how i would do this
-			
-			S1_state = 0;
-			// S1 case
-			// normal call
-			// turn off interrupts from S1 during operation
-			P4IE &= ~BIT0;			
-			// turn on GIE, it turns off automatically when entering an interrupt
-			__bis_SR_register(GIE);
+__interrupt void button_ISR(void)
+{
+    // during this turn off during button interrupts, also note that GIE is turned off whenever inside a interrupt
+    P4IE &= ~(BIT0 | BIT1);
+
+    // remember which button has been pressed
+    unsigned int port_interrupts = P4IFG;
+
+    unsigned int start = TA0R;
+
+    while ( (unsigned int)(TA0R - start) < 40 ) // button debounce not sure how to change to not polling
+    {
+        __no_operation();
+    }
+    // ^^^: This is currently a blocking delay inside the button ISR The CPU cannot handle other interrupt work normally while this is running !
+    // Consider changing the debounce to use timer-based timing maybeee // i know (im crine), im not sure how to change this to interrupt based
+
+    // change the state of timers i.e. load different values into TA1CCTL0 for TA0CCR0 interrupts to TIMER1_A0_VECTOR
+    if ( ( port_interrupts & BIT1 ) ) // this will detect both cases of S2 alone and S1 with S2 giving S2 priority
+    {
+
+        switch ( current_task )
+        {
+            case IDLE:
+
+                // turn off TA1
+                TA1CTL &= ~MC_3;
+
+                // disable TA1CCTL0 interrupts
+                TA1CCTL0 &= ~CCIE;
+
+                // reset TA1R
+                TA1CTL |= TACLR;
+
+                // if in idle and emergency task has been set
+                current_task = EMERGENCY;
+
+                // set up the correct timer values, in emergency need ~150 ms delay at 4096 Hz this is about 615 ticks
+                TA1CCR0 = 1000;
+
+                // do not set TA1CTL = TAIE since thats the overflow flag, i.e. not what is needed for up mode
+                // enable interrupts from the capture/compare register
+                TA1CCTL0 &= ~CCIFG;
+                TA1CCTL0 |= CCIE;
+
+                // turn on timer TA1 to up mode
+                TA1CTL |= MC_1;
+
+                // toggle LEDs to on, note not an XOR here, thats in the timer interrupt
+                P3OUT |= LED5 | LED6 | LED7 | LED8;
+
+                // UART logging
+                printstr("[ ");
+                convert_timer(time);
+                printstr(time);
+                printstr(" ms ] S2 -> EMERGENCY CALL : EXIT IDLE\n");
+                printend();
+
+                break;
+
+            case EMERGENCY:
+
+                if ( normal_suspended )
+                {
+                    // turn off TA1
+                    TA1CTL &= ~MC_3;
+            
+                    // disable TA1CCTL0 interrupts
+                    TA1CCTL0 &= ~CCIE;
+
+                    // reset TA1R, not strictly necessary because of later line
+                    TA1CTL |= TACLR;
+
+                    // case of emergency that did interrupt a normal call
+                    current_task = NORMAL;
+
+                    normal_suspended = FALSE;
+
+                    // load the different interrupt time into capture/compare register, ~600 ms at 4096 Hz requires 615 ticks
+                    TA1CCR0 = 2000;
+
+                    // load the remembered time into the TA1R to continue from where the timer left off
+                    TA1R = normal_timer_mem;
+
+                    // enable TA1CCTL0 interrupts
+                    TA1CCTL0 &= ~CCIFG;
+                    TA1CCTL0 |= CCIE;
+
+                    // turn on TA1
+                    TA1CTL |= MC_1;
+
+                    // turn off emergency LEDs
+                    P3OUT &= ~(LED5 | LED6 | LED7 | LED8);
+
+                    // UART logging
+                    printstr("[ ");
+                    convert_timer(time);
+                    printstr(time);
+                    printstr(" ms ] S2 -> EXIT EMERGENCY CALL : RESUME NORMAL CALL\n");
+                    printend();
 
 
-			while(!(P4IFG & BIT0)) { // when P4IFG = 0x0000 (dont need to consider P4IFG = 0x0001 since this is an ISR) then & 0x0001 = 0, then when its set its 0x0001
+                }
+                else // normal_suspended == FALSE
+                {
+                    // turn off TA1
+                    TA1CTL &= ~MC_3;
 
-				TA0CTL |= TACLR; // clears TA0R to count from 0 again
-				TA0CTL |= MC_2; // counter starts counting up contiuously 
-				// change this eventually to a interrupt based thing? the switch statement would have to be in the interrupt? can use timer A1 for S2 instead of timer A0 to resolve between the two?
-				while((TA0R < 0x099A)); // TA0 is counting at 4.096 kHz, for a ~600 ms delay want to count to 4096*0.6 = 2458 = 0x099A
+                    // disable TA1CCTL0 interrupts
+                    TA1CCTL0 &= ~CCIE;
 
-				switch(S1_state) {
-					case 0:
-						// turn on LED1 and turn off LED2-4
-						PJOUT = LED1;
-						S1_state++;
+                    // reset TA1R
+                    TA1CTL |= TACLR;
 
-						break;
-					case 1:
-						// turn on LED2 and turn off LED1, 3-4
-						PJOUT = LED2;
-						S1_state++;
+                    // case of emergency that did not interrupt a normal call
+                    current_task = IDLE;
 
-						break;
-					case 2:
-						// turn on LED3 and turn off LED1-2, 4
-						PJOUT = LED3;
-						S1_state++;
+                    TA1CCR0 = 0x0000;
 
-						break;
-					case 3:
-						// turn on LED 4 and turn off LED1-3
-						PJOUT = LED4;
-						S1_state = 0;
+                    // turn off LEDs
+                    P3OUT &= ~(LED5 | LED6 | LED7 | LED8);
 
-						break;
-					default:
-						S1_state = 0;
-				}
-			
-			}
+                    // UART logging
+                    printstr("[ ");
+                    convert_timer(time);
+                    printstr(time);
+                    printstr(" ms ] S2 -> EMERGENCY CALL COMPLETE\n");
+                    printend();
 
-			// when exiting the ISR need to turn on the normal conditions again
-			P4IFG &= ~P4IV_P4IFG0;
+                }
 
-			// turn off the timer A0
-			TA0CTL &= ~MC_3;
+                break;
 
-			// turn off all the LEDs
-			PJOUT = 0x00;
+            case NORMAL:
+                // turn off TA1
+                TA1CTL &= ~MC_3;
 
-			// last thing to do before exiting is enabling the S1 interrupts again
-			P4IE |= BIT0;
+                // record the stopped value
+                normal_timer_mem = TA1R;
 
-			break;
-		case P4IV_P4IFG1:
-			// S2 case
-			// turn off interrupts from S2 during operation, GIE already stops when entering, so S1 doesnt interrupt
-			// button debouncing, not sure how i would do this
-			
-			S2_state = 0;
+                // disable TA1CCTL0 interrupts
+                TA1CCTL0 &= ~CCIE;
 
+                // reset TA1R
+                TA1CTL |= TACLR;
 
-			P4IE &= ~BIT1;
+                // case of normal task being interrupted
+                normal_suspended = TRUE;
+                current_task = EMERGENCY;
 
-			while(!(P4IFG & BIT1)) { // when P4IFG = 0x0000 then & 0x0002 = 0, then when its set its 0x0002
+                // load the different interrupt time into capture/compare register
+                TA1CCR0 = 1000;
 
-				TA0CTL |= TACLR; // clears TA0R to count from 0 again
-				TA0CTL |= MC_2; // counter starts counting up contiuously 
-				// change this eventually to a interrupt based thing? the switch statement would have to be in the interrupt? can use timer A1 for S2 instead of timer A0 to resolve between the two?
-				while((TA0R < 0x0267)); // TA0 is counting at 4.096 kHz, for a ~150 ms delay want to count to 4096*0.15 = 615 = 0x0267
+                // enable TA1CCTL0 interrupts
+                TA1CCTL0 &= ~CCIFG;
+                TA1CCTL0 |= CCIE;
 
-				switch(S2_state) {
-					case 0:
-						// turn on LED5 and turn off LED6-8
-						P3OUT = LED5;
-						S2_state++;
+                // turn on TA1
+                TA1CTL |= MC_1;
 
-						break;
-					case 1:
-						// turn on LED6 and turn off LED5, 6-8
-						P3OUT = LED6;
-						S2_state++;
+                // turn on LEDs
+                P3OUT |= LED5 | LED6 | LED7 | LED8;
 
-						break;
-					case 2:
-						// turn on LED7 and turn off LED5-6, 8
-						P3OUT = LED7;
-						S2_state++;
+                // UART logging
+                printstr("[ ");
+                convert_timer(time);
+                printstr(time);
+                printstr(" ms ] S2 -> EMERGENCY CALL : SUSPEND NORMAL CALL\n");
+                printend();
 
-						break;
-					case 3:
-						// turn on LED8 and turn off LED5-7
-						P3OUT = LED8;
-						S2_state = 0;
+                break;
 
-						break;
-					default:
-						S2_state = 0;
-				}
-			
-			}
+            default:
+                break;
+        }
 
-			// when exiting the ISR need to turn on the normal conditions again
-			P4IFG &= ~P4IV_P4IFG1;
+        // if there was a switch 1 event at the same time as the switch 2 event ignore the switch 1 event
+        P4IFG &= ~(BIT0 | BIT1);
 
-			// turn off the timer A0
-			TA0CTL &= ~MC_3;
+    }
+    else if ( port_interrupts & BIT0 )
+    {
+        // normal case, if both S1 and S2 then the previous if will have caught it and defaulted it to a emergency
+        switch ( current_task )
+        {
+            case IDLE:
+                // swap to normal operation
+                // turn off TA1
+                TA1CTL &= ~MC_3;
 
-			// turn off all the LEDs
-			P3OUT = 0x00;
+                // disable TA1CCTL0 interrupts
+                TA1CCTL0 &= ~CCIE;
 
-			// last thing to do before exiting is enabling the S2 interrupts again
-			P4IE |= BIT1;
+                // reset TA1R
+                TA1CTL |= TACLR;
 
+                // set current task
+                current_task = NORMAL;
 
-			break;
-		default:
-			P4IFG = 0x00;
-	}
+                // load normal interrupt time into capture/compare
+                TA1CCR0 = 2000;
+
+                // enable TA1CCTL0 interrupts
+                TA1CCTL0 &= ~CCIFG;
+                TA1CCTL0 |= CCIE;
+
+                // turn on TA1
+                TA1CTL |= MC_1;
+
+                // set the first LED and reset the LEDs state (note set to 1 because 0 is LED1 ON, which is done here)
+                PJOUT = LED1;
+                S1_LED_state = 1;
+
+                // UART logging
+                printstr("[ ");
+                convert_timer(time);
+                printstr(time);
+                printstr(" ms ] S1 -> NORMAL CALL : EXIT IDLE\n");
+                printend();
+
+                break;
+            case NORMAL:
+                // exit normal operation
+                // turn off TA1
+                TA1CTL &= ~MC_3;
+
+                // disable TA1CCTL0 interrupts
+                TA1CCTL0 &= ~CCIE;
+
+                // reset TA1R
+                TA1CTL |= TACLR;
+
+                // set current task
+                current_task = IDLE;
+
+                // load nothing into the TA1CCTL0
+                TA1CCR0 = 0x0000;
+
+                // turn off all LEDs
+                PJOUT &= ~(LED1 | LED2 | LED3 | LED4);
+
+                // UART logging
+                printstr("[ ");
+                convert_timer(time);
+                printstr(time);
+                printstr(" ms ] S1 -> NORMAL CALL COMPLETE\n");
+                printend();
+
+                break;
+            case EMERGENCY:
+
+                __no_operation();
+
+                // S1 is intentionally ignored during an emergency because EMERGENNCY has priority over NORMAL
+                // TODO: Confirm that the S1 interrupt flag is clleared corrrectly so that the ignored button press does not get processed after the emergency. // should be done by line 506 after the switch statement?
+
+                // UART logging
+                printstr("[ ");
+                convert_timer(time);
+                printstr(time);
+                printstr(" ms ] S1 -> NORMAL CALL IGNORED : EMERGENCY CALL ACTIVE\n");
+                printend();
+
+                break;
+            default:
+                break;
+        }
+
+        // clear the interrupt flag from S1
+        P4IFG &= ~BIT0;
+
+    }
+
+    // after flags are set turn on button interrupts again
+    P4IE |= BIT0 | BIT1;
+
 }
 
+#pragma vector = TIMER1_A0_VECTOR
+__interrupt void timer1_ISR(void)
+{
+    // TA1CCTL0 -> TA1CCR0
+    if ( current_task == NORMAL )
+    {
+        switch( S1_LED_state )
+        {
+            case 0:
+                PJOUT = LED1;
+                S1_LED_state++;
+                break;
+            case 1:
+                PJOUT = LED2;
+                S1_LED_state++;
+                break;
+            case 2:
+                PJOUT = LED3;
+                S1_LED_state++;
+                break;
+            case 3:
+                PJOUT = LED4;
+                S1_LED_state = 0;
+                break;
+            default:
+                PJOUT &= ~(LED1 | LED2 | LED3 | LED4);
+                S1_LED_state = 0;
+                break;
+        }
+    }
+    else if ( current_task == EMERGENCY )
+    {
+        P3OUT ^= (LED5 | LED6 | LED7 | LED8);
+    }
+    else
+    {
+        __no_operation();
+    }
 
+    TA1CCTL0 &= ~CCIFG;
+}
+
+#pragma vector = TIMER0_A0_VECTOR
+__interrupt void Timer0_ISR(void)
+{
+    // exclusively for system timer overflows
+    sys_timer_overflow++;
+
+    TA0CCTL0 &= ~CCIFG;
+}
