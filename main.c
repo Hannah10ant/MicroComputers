@@ -110,7 +110,7 @@ void initial()
     TA0CTL |= TACLR; // clear TA0R to start from known
    // Hannah TODO: Check the assignment requirements regarding Timer_A0..... 
 
-    TA0CCR0 = 15000; // the timer will overflow at ~ exactly 15 sec, note 61440 - 1 since up mode will count one extra tick before overflow flag // changed this due to comment in top of convert_timer
+    TA0CCR0 = 61439; // the timer will overflow at ~ exactly 15 sec, note 61440 - 1 since up mode will count one extra tick before overflow flag // changed this due to comment in top of convert_timer
     TA0CCTL0 &= ~(CM_3 | CAP); // no capture
     TA0CCTL0 |= CCIE; // interrupt on control register enabled
 
