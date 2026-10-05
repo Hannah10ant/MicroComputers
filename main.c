@@ -335,7 +335,7 @@ __interrupt void button_ISR(void)
                 current_task = EMERGENCY;
 
                 // set up the correct timer values, in emergency need ~150 ms delay at 4096 Hz this is about 615 ticks
-                TA1CCR0 = 1000;
+                TA1CCR0 = 615;
 
                 // do not set TA1CTL = TAIE since thats the overflow flag, i.e. not what is needed for up mode
                 // enable interrupts from the capture/compare register
@@ -375,8 +375,8 @@ __interrupt void button_ISR(void)
 
                     normal_suspended = FALSE;
 
-                    // load the different interrupt time into capture/compare register, ~600 ms at 4096 Hz requires 615 ticks
-                    TA1CCR0 = 2000;
+                    // load the different interrupt time into capture/compare register, ~600 ms at 4096 Hz requires 2548 ticks
+                    TA1CCR0 = 2458;
 
                     // load the remembered time into the TA1R to continue from where the timer left off
                     TA1R = normal_timer_mem;
@@ -448,7 +448,7 @@ __interrupt void button_ISR(void)
                 current_task = EMERGENCY;
 
                 // load the different interrupt time into capture/compare register
-                TA1CCR0 = 1000;
+                TA1CCR0 = 615;
 
                 // enable TA1CCTL0 interrupts
                 TA1CCTL0 &= ~CCIFG;
@@ -497,7 +497,7 @@ __interrupt void button_ISR(void)
                 current_task = NORMAL;
 
                 // load normal interrupt time into capture/compare
-                TA1CCR0 = 2000;
+                TA1CCR0 = 2458;
 
                 // enable TA1CCTL0 interrupts
                 TA1CCTL0 &= ~CCIFG;
