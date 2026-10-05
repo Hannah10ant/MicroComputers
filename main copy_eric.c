@@ -78,74 +78,82 @@ void convert_timer(volatile char final[11])
     // !!!!!!!!!! TODO: Verify 15000 against the actual TA0CCR0 period TA0CCR0 and this calculation must represent the same amount of time, otherwise UART timestamps will drift............ // TA0CCR0 set to 61440 - 1 which at 4096 Hz ~ 61440/4096 = 15 sec
     unsigned long total_time_ms = ((unsigned long)sys_timer_overflow) * 15000 + (((unsigned long)TA0R * 1000)>>12); // maximum value of 4,294,967,295 ms note that 1000/4096 is just the time in ms for clock ticks, overflow issue here hence longs, >>12 is just /4096
 
-    // double dabble algorithm (yes thats the actual name)
-    // initialize some array for the scratch space
-    // maximum number of characters is 10 * 4 bits per character + 32 bits for total time = 72 bits = 9 bytes
-    unsigned char scratch[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
-
-    // lower 2 bytes
-    scratch[8] = total_time_ms & 0xFF;
-    total_time_ms >>= 8;
-    scratch[7] = total_time_ms & 0xFF;
-    total_time_ms >>= 8;
-    // upper 2 bytes
-    scratch[6] = total_time_ms & 0xFF;
-    total_time_ms >>= 8;
-    scratch[5] = total_time_ms & 0xFF;
-    // total_time is now loaded into the upper elements of the array
-
     signed char idx;
-    signed char odx;
 
-    // need to keep track of the byte thats one lower to get correct shifting
-    unsigned char carry_in = 0;
-    unsigned char carry_out = 0;
-
-    char lower_nibble;
-    char upper_nibble;
-
-    while ( (scratch[8] != 0x00) ||
-            (scratch[7] != 0x00) ||
-            (scratch[6] != 0x00) ||
-            (scratch[5] != 0x00) )
+    for (idx = 0; idx < 9; idx ++)
     {
+        final[ 9 - idx ] = (total_time_ms % 10) + '0';
+        total_time_ms = total_time_ms / 10;
+    }
 
-        for (odx = 0; odx < 5; odx++)
-        {
-            // check lower nibble
-            lower_nibble = scratch[odx] & 0x0F;
-            if (lower_nibble >= 5)
-            {
-                scratch[odx] += 0x03;
-            }
+    // // double dabble algorithm (yes thats the actual name)
+    // // initialize some array for the scratch space
+    // // maximum number of characters is 10 * 4 bits per character + 32 bits for total time = 72 bits = 9 bytes
+    // unsigned char scratch[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+    // // lower 2 bytes
+    // scratch[8] = total_time_ms & 0xFF;
+    // total_time_ms >>= 8;
+    // scratch[7] = total_time_ms & 0xFF;
+    // total_time_ms >>= 8;
+    // // upper 2 bytes
+    // scratch[6] = total_time_ms & 0xFF;
+    // total_time_ms >>= 8;
+    // scratch[5] = total_time_ms & 0xFF;
+    // // total_time is now loaded into the upper elements of the array
+
+    // signed char idx;
+    // signed char odx;
+
+    // // need to keep track of the byte thats one lower to get correct shifting
+    // unsigned char carry_in = 0;
+    // unsigned char carry_out = 0;
+
+    // char lower_nibble;
+    // char upper_nibble;
+
+    // while ( (scratch[8] != 0x00) ||
+    //         (scratch[7] != 0x00) ||
+    //         (scratch[6] != 0x00) ||
+    //         (scratch[5] != 0x00) )
+    // {
+
+    //     for (odx = 0; odx < 5; odx++)
+    //     {
+    //         // check lower nibble
+    //         lower_nibble = scratch[odx] & 0x0F;
+    //         if (lower_nibble >= 5)
+    //         {
+    //             scratch[odx] += 0x03;
+    //         }
             
-            // check upper nibble
-            upper_nibble = (scratch[odx] >> 4) & 0x0F;
-            if (upper_nibble >= 5)
-            {
-                scratch[odx] += 0x30;
-            }
-        }
+    //         // check upper nibble
+    //         upper_nibble = (scratch[odx] >> 4) & 0x0F;
+    //         if (upper_nibble >= 5)
+    //         {
+    //             scratch[odx] += 0x30;
+    //         }
+    //     }
 
-        carry_in = 0;
-        for (idx = 8; idx >= 0; idx--)
-        {
-            carry_out = scratch[idx] & 0x80; // is the top bit set, important for carrying over to next byte
-            carry_out >>= 7; // place the previous top bit to bottom bit
-            scratch[idx] = (scratch[idx] << 1) | carry_in; // shift the byte one left and replace the lowest bit with the highest bit of the previous byte
-            carry_in = carry_out;
-        }
-    }
+    //     carry_in = 0;
+    //     for (idx = 8; idx >= 0; idx--)
+    //     {
+    //         carry_out = scratch[idx] & 0x80; // is the top bit set, important for carrying over to next byte
+    //         carry_out >>= 7; // place the previous top bit to bottom bit
+    //         scratch[idx] = (scratch[idx] << 1) | carry_in; // shift the byte one left and replace the lowest bit with the highest bit of the previous byte
+    //         carry_in = carry_out;
+    //     }
+    // }
 
-    // scratch[0 - 4] now holds all the values in "decimal"
-    for (idx = 0; idx < 5; idx++)
-    {
-        lower_nibble = scratch[idx] & 0x0F;
-        upper_nibble = scratch[idx] >> 4;
+    // // scratch[0 - 4] now holds all the values in "decimal"
+    // for (idx = 0; idx < 5; idx++)
+    // {
+    //     lower_nibble = scratch[idx] & 0x0F;
+    //     upper_nibble = scratch[idx] >> 4;
 
-        final[ 2 * idx ] = upper_nibble + '0';
-        final[ (2 * idx) + 1 ] = lower_nibble + '0';
-    }
+    //     final[ 2 * idx ] = upper_nibble + '0';
+    //     final[ (2 * idx) + 1 ] = lower_nibble + '0';
+    // }
      // TODO: Make sure final[10] = '\0' is set before returning printstr() expects the timestamp to be null-terminated :p // if wanted can add final[10] = '\0', but this for loop only goes to final[ (2 * 4) + 1 ] = final[9]
 }
 
