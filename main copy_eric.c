@@ -46,30 +46,31 @@ volatile unsigned int sys_timer_overflow = 0;
 volatile char time[11] = {'0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '\0'}; 
 // TODO: Make sure convert_timer() always writes the final '\0'. printstr() relies on this to know where the string ends - debugging // final loop in convert timer only goes up to time[9] while leaving time[10] untouched, can always include time[10] = '\0' if wanted
 
+volatile char print_idx = 0;
+
+volatile char * print_str;
+
 void printstr(volatile char * str) 
 {
-    char i = 0;
-    while (str[i] != '\0') { // check if end of string
-        UCA0TXBUF = str[i]; // load character into transmitter buffer
-        while (UCA0STATW & UCBUSY); // check whether the transmitter is busy sending a char
+    print_str = str;
+    print_idx = 0;
 
-        i++; // increment index
-    
-        // Hannah's notes, feel free to disgrard if doesnt apply
-        // TODO: Check this parameter type.
-        // time[] is a character array, so this function may need to receive a char* rather than a char**. // was already receiveing a char* ? time is not array of strings ( char** )
+    UCA0IE |= UCTXIE;
 
-        // Also note that UART transmission is currently polling-based (im pre sure) and The assignment architecture may require a UART TX ISR according to outline // not sure how to convert this to an interrupt :(
-    }
-}
+    UCA0TXBUF = print_str[print_idx];
 
-void printend() 
-{
-    UCA0TXBUF = 0x0A; // 0x0A is '\n' i.e. print a newline on the output
-    while (UCA0STATW & UCBUSY); // wait for this to be sent
+    print_idx++;
 
-    UCA0TXBUF = 0x0D; // 0x0D is '\r' carrige return, goes back to the start of the newline 
-    while (UCA0STATW & UCBUSY); // wait for this to be sent
+    __low_power_mode_0();
+
+
+    // char i = 0;
+    // while (str[i] != '\0') { // check if end of string
+    //     UCA0TXBUF = str[i]; // load character into transmitter buffer
+    //     while (UCA0STATW & UCBUSY); // check whether the transmitter is busy sending a char
+
+    //     i++; // increment index
+    // }
 }
 
 void convert_timer(volatile char final[11])
@@ -86,74 +87,6 @@ void convert_timer(volatile char final[11])
         total_time_ms = total_time_ms / 10;
     }
 
-    // // double dabble algorithm (yes thats the actual name)
-    // // initialize some array for the scratch space
-    // // maximum number of characters is 10 * 4 bits per character + 32 bits for total time = 72 bits = 9 bytes
-    // unsigned char scratch[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
-
-    // // lower 2 bytes
-    // scratch[8] = total_time_ms & 0xFF;
-    // total_time_ms >>= 8;
-    // scratch[7] = total_time_ms & 0xFF;
-    // total_time_ms >>= 8;
-    // // upper 2 bytes
-    // scratch[6] = total_time_ms & 0xFF;
-    // total_time_ms >>= 8;
-    // scratch[5] = total_time_ms & 0xFF;
-    // // total_time is now loaded into the upper elements of the array
-
-    // signed char idx;
-    // signed char odx;
-
-    // // need to keep track of the byte thats one lower to get correct shifting
-    // unsigned char carry_in = 0;
-    // unsigned char carry_out = 0;
-
-    // char lower_nibble;
-    // char upper_nibble;
-
-    // while ( (scratch[8] != 0x00) ||
-    //         (scratch[7] != 0x00) ||
-    //         (scratch[6] != 0x00) ||
-    //         (scratch[5] != 0x00) )
-    // {
-
-    //     for (odx = 0; odx < 5; odx++)
-    //     {
-    //         // check lower nibble
-    //         lower_nibble = scratch[odx] & 0x0F;
-    //         if (lower_nibble >= 5)
-    //         {
-    //             scratch[odx] += 0x03;
-    //         }
-            
-    //         // check upper nibble
-    //         upper_nibble = (scratch[odx] >> 4) & 0x0F;
-    //         if (upper_nibble >= 5)
-    //         {
-    //             scratch[odx] += 0x30;
-    //         }
-    //     }
-
-    //     carry_in = 0;
-    //     for (idx = 8; idx >= 0; idx--)
-    //     {
-    //         carry_out = scratch[idx] & 0x80; // is the top bit set, important for carrying over to next byte
-    //         carry_out >>= 7; // place the previous top bit to bottom bit
-    //         scratch[idx] = (scratch[idx] << 1) | carry_in; // shift the byte one left and replace the lowest bit with the highest bit of the previous byte
-    //         carry_in = carry_out;
-    //     }
-    // }
-
-    // // scratch[0 - 4] now holds all the values in "decimal"
-    // for (idx = 0; idx < 5; idx++)
-    // {
-    //     lower_nibble = scratch[idx] & 0x0F;
-    //     upper_nibble = scratch[idx] >> 4;
-
-    //     final[ 2 * idx ] = upper_nibble + '0';
-    //     final[ (2 * idx) + 1 ] = lower_nibble + '0';
-    // }
      // TODO: Make sure final[10] = '\0' is set before returning printstr() expects the timestamp to be null-terminated :p // if wanted can add final[10] = '\0', but this for loop only goes to final[ (2 * 4) + 1 ] = final[9]
 }
 
@@ -165,9 +98,13 @@ void initial()
     TA0CTL = 0x0000;
     TA1CTL = 0x0000;
 
-    CSCTL0 = CSKEY;
-    CSCTL2 &= ~SELA_7; // ACLK source is XT1CLK ~ 32,768 Hz
+    CSCTL0 = CSKEY; // unlock CS
+    CSCTL4 &= ~XT1OFF; // make sure XT1 is on
+    CSCTL2 = SELA__XT1CLK | SELS__DCOCLK | SELM__DCOCLK; // ACLK source is XT1CLK ~ 32,768 Hz
     CSCTL3 &= ~(0x0700); // ACLK input divider /1
+    CSCTL4 &= ~XT1DRIVE_3;
+    CSCTL4 &= ~XTS;
+    CSCTL0_H = 0;
 
     // timer 0
     TA0CTL &= ~MC_3; // turn the timer off to ensure stable config
@@ -181,15 +118,6 @@ void initial()
     TA0CCTL0 |= CCIE; // interrupt on control register enabled
 
     // turn timers on
-    CSCTL5 |= ENSTFCNT1;
-    CSCTL4 &= ~XT1OFF; // turn XT1 on, XT1 has a ~ 1 second start time (my goodness)
-    do
-    {
-        CSCTL5 &= ~XT1OFFG; // XT1 fault flag
-        SFRIFG1 &= ~OFIFG; // general oscillator fault flag
-    } while (SFRIFG1 & OFIFG);
-    CSCTL0_H = 0;
-
     TA0CTL |= MC_1; // up mode
 
     // timer 1
@@ -254,7 +182,7 @@ __interrupt void button_ISR(void)
 
     unsigned int start = TA0R;
 
-    while ( (unsigned int)(TA0R - start) < 40 ) // button debounce not sure how to change to not polling
+    while ( (unsigned int)(TA0R - start) < 120 ) // button debounce not sure how to change to not polling
     {
         __no_operation();
     }
@@ -282,7 +210,7 @@ __interrupt void button_ISR(void)
                 current_task = EMERGENCY;
 
                 // set up the correct timer values, in emergency need ~150 ms delay at 4096 Hz this is about 615 ticks
-                TA1CCR0 = 0x0267;
+                TA1CCR0 = 615;
 
                 // do not set TA1CTL = TAIE since thats the overflow flag, i.e. not what is needed for up mode
                 // enable interrupts from the capture/compare register
@@ -299,8 +227,7 @@ __interrupt void button_ISR(void)
                 printstr("[ ");
                 convert_timer(time);
                 printstr(time);
-                printstr(" ms ] S2 -> EMERGENCY CALL : EXIT IDLE\n");
-                printend();
+                printstr(" ms ] S2 -> EMERGENCY CALL : EXIT IDLE\n\r");
 
                 break;
 
@@ -322,8 +249,8 @@ __interrupt void button_ISR(void)
 
                     normal_suspended = FALSE;
 
-                    // load the different interrupt time into capture/compare register, ~600 ms at 4096 Hz requires 615 ticks
-                    TA1CCR0 = 0x099A;
+                    // load the different interrupt time into capture/compare register, ~600 ms at 4096 Hz requires 2548 ticks
+                    TA1CCR0 = 2548;
 
                     // load the remembered time into the TA1R to continue from where the timer left off
                     TA1R = normal_timer_mem;
@@ -342,9 +269,7 @@ __interrupt void button_ISR(void)
                     printstr("[ ");
                     convert_timer(time);
                     printstr(time);
-                    printstr(" ms ] S2 -> EXIT EMERGENCY CALL : RESUME NORMAL CALL\n");
-                    printend();
-
+                    printstr(" ms ] S2 -> EXIT EMERGENCY CALL : RESUME NORMAL CALL\n\r");
 
                 }
                 else // normal_suspended == FALSE
@@ -370,8 +295,7 @@ __interrupt void button_ISR(void)
                     printstr("[ ");
                     convert_timer(time);
                     printstr(time);
-                    printstr(" ms ] S2 -> EMERGENCY CALL COMPLETE\n");
-                    printend();
+                    printstr(" ms ] S2 -> EMERGENCY CALL COMPLETE\n\r");
 
                 }
 
@@ -395,7 +319,7 @@ __interrupt void button_ISR(void)
                 current_task = EMERGENCY;
 
                 // load the different interrupt time into capture/compare register
-                TA1CCR0 = 0x0267;
+                TA1CCR0 = 615;
 
                 // enable TA1CCTL0 interrupts
                 TA1CCTL0 &= ~CCIFG;
@@ -411,8 +335,7 @@ __interrupt void button_ISR(void)
                 printstr("[ ");
                 convert_timer(time);
                 printstr(time);
-                printstr(" ms ] S2 -> EMERGENCY CALL : SUSPEND NORMAL CALL\n");
-                printend();
+                printstr(" ms ] S2 -> EMERGENCY CALL : SUSPEND NORMAL CALL\n\r");
 
                 break;
 
@@ -444,7 +367,7 @@ __interrupt void button_ISR(void)
                 current_task = NORMAL;
 
                 // load normal interrupt time into capture/compare
-                TA1CCR0 = 0x099A;
+                TA1CCR0 = 2548;
 
                 // enable TA1CCTL0 interrupts
                 TA1CCTL0 &= ~CCIFG;
@@ -461,8 +384,7 @@ __interrupt void button_ISR(void)
                 printstr("[ ");
                 convert_timer(time);
                 printstr(time);
-                printstr(" ms ] S1 -> NORMAL CALL : EXIT IDLE\n");
-                printend();
+                printstr(" ms ] S1 -> NORMAL CALL : EXIT IDLE\n\r");
 
                 break;
             case NORMAL:
@@ -489,8 +411,7 @@ __interrupt void button_ISR(void)
                 printstr("[ ");
                 convert_timer(time);
                 printstr(time);
-                printstr(" ms ] S1 -> NORMAL CALL COMPLETE\n");
-                printend();
+                printstr(" ms ] S1 -> NORMAL CALL COMPLETE\n\r");
 
                 break;
             case EMERGENCY:
@@ -504,8 +425,7 @@ __interrupt void button_ISR(void)
                 printstr("[ ");
                 convert_timer(time);
                 printstr(time);
-                printstr(" ms ] S1 -> NORMAL CALL IGNORED : EMERGENCY CALL ACTIVE\n");
-                printend();
+                printstr(" ms ] S1 -> NORMAL CALL IGNORED : EMERGENCY CALL ACTIVE\n\r");
 
                 break;
             default:
@@ -571,4 +491,21 @@ __interrupt void Timer0_ISR(void)
     sys_timer_overflow++;
 
     TA0CCTL0 &= ~CCIFG;
+}
+
+#pragma vector = USCI_A0_VECTOR
+// interrupt for when the transmitter buffer is empty
+// need to enable the UCA0IE |= UCTXIE
+__interrupt void UART_ISR(void)
+{
+    if ( print_str[print_idx] != '\0' )
+    {
+        UCA0TXBUF = print_str[print_idx];
+        print_idx++;
+    }
+    else
+    {
+        UCA0IE &= ~UCTXIE;
+        __bic_SR_register_on_exit(LPM0_bits);
+    }
 }
