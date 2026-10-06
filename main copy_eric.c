@@ -182,12 +182,25 @@ __interrupt void button_ISR(void)
 
     unsigned int start = TA0R;
 
-    while ( (unsigned int)(TA0R - start) < 120 ) // button debounce not sure how to change to not polling
-    {
-        __no_operation();
-    }
+    // while ( (unsigned int)(TA0R - start) < 120 ) // button debounce not sure how to change to not polling
+    // {
+    //     __no_operation();
+    // }
     // ^^^: This is currently a blocking delay inside the button ISR The CPU cannot handle other interrupt work normally while this is running !
     // Consider changing the debounce to use timer-based timing maybeee // i know (im crine), im not sure how to change this to interrupt based
+
+    TA0CCR1 = start + 120; // change this 120 to something more appropriate for 32 kHz
+    if (TA0CCR1 > TA0CCR0)
+    {
+        TA0CCR1 = TA0CCR1 - (TA0CCR0 + 1);
+    }
+    TA0CCTL1 |= CCIE;
+    __enable_interrupt();
+    _low_power_mode_0();
+    __disable_interrupt();
+    TA0CCTL1 &= ~CCIE;
+
+    // add a check to see if the button is still pressed? note use P4IN
 
     // change the state of timers i.e. load different values into TA1CCTL0 for TA0CCR0 interrupts to TIMER1_A0_VECTOR
     if ( ( port_interrupts & BIT1 ) ) // this will detect both cases of S2 alone and S1 with S2 giving S2 priority
@@ -227,7 +240,7 @@ __interrupt void button_ISR(void)
                 printstr("[ ");
                 convert_timer(time);
                 printstr(time);
-                printstr(" ms ] S2 -> EMERGENCY CALL : EXIT IDLE\n\r");
+                printstr("  ms ] S2 -> EMERGENCY CALL : EXIT IDLE\n\r");
 
                 break;
 
@@ -269,7 +282,7 @@ __interrupt void button_ISR(void)
                     printstr("[ ");
                     convert_timer(time);
                     printstr(time);
-                    printstr(" ms ] S2 -> EXIT EMERGENCY CALL : RESUME NORMAL CALL\n\r");
+                    printstr("  ms ] S2 -> EXIT EMERGENCY CALL : RESUME NORMAL CALL\n\r");
 
                 }
                 else // normal_suspended == FALSE
@@ -295,7 +308,7 @@ __interrupt void button_ISR(void)
                     printstr("[ ");
                     convert_timer(time);
                     printstr(time);
-                    printstr(" ms ] S2 -> EMERGENCY CALL COMPLETE\n\r");
+                    printstr("  ms ] S2 -> EMERGENCY CALL COMPLETE\n\r");
 
                 }
 
@@ -335,7 +348,7 @@ __interrupt void button_ISR(void)
                 printstr("[ ");
                 convert_timer(time);
                 printstr(time);
-                printstr(" ms ] S2 -> EMERGENCY CALL : SUSPEND NORMAL CALL\n\r");
+                printstr("  ms ] S2 -> EMERGENCY CALL : SUSPEND NORMAL CALL\n\r");
 
                 break;
 
@@ -384,7 +397,7 @@ __interrupt void button_ISR(void)
                 printstr("[ ");
                 convert_timer(time);
                 printstr(time);
-                printstr(" ms ] S1 -> NORMAL CALL : EXIT IDLE\n\r");
+                printstr("  ms ] S1 -> NORMAL CALL : EXIT IDLE\n\r");
 
                 break;
             case NORMAL:
@@ -411,7 +424,7 @@ __interrupt void button_ISR(void)
                 printstr("[ ");
                 convert_timer(time);
                 printstr(time);
-                printstr(" ms ] S1 -> NORMAL CALL COMPLETE\n\r");
+                printstr("  ms ] S1 -> NORMAL CALL COMPLETE\n\r");
 
                 break;
             case EMERGENCY:
@@ -425,7 +438,7 @@ __interrupt void button_ISR(void)
                 printstr("[ ");
                 convert_timer(time);
                 printstr(time);
-                printstr(" ms ] S1 -> NORMAL CALL IGNORED : EMERGENCY CALL ACTIVE\n\r");
+                printstr("  ms ] S1 -> NORMAL CALL IGNORED : EMERGENCY CALL ACTIVE\n\r");
 
                 break;
             default:
@@ -491,6 +504,14 @@ __interrupt void Timer0_ISR(void)
     sys_timer_overflow++;
 
     TA0CCTL0 &= ~CCIFG;
+}
+
+#pragma vector = TIMER0_A1_VECTOR
+__interrupt void timer0_A1_ISR(void)
+{
+    __bic_SR_register_on_exit(LPM0_bits);
+
+    TA0CCTL1 &= ~CCIFG;
 }
 
 #pragma vector = USCI_A0_VECTOR
