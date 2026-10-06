@@ -58,14 +58,12 @@ void printstr(volatile char * str)
     print_str = str;
     print_idx = 0;
 
+    UCA0TXBUF = print_str[print_idx];
+    print_idx++;
+    
     UCA0IE |= UCTXIE;
 
-    UCA0TXBUF = print_str[print_idx];
-
-    print_idx++;
-
-    __low_power_mode_0();
-
+    _low_power_mode_0();
 
     // char i = 0;
     // while (str[i] != '\0') { // check if end of string
@@ -99,7 +97,7 @@ void initial()
     TA0CTL = 0x0000;
     TA1CTL = 0x0000;
 
-    CSCTL0 = CSKEY; // unlock CS
+    CSCTL0_H = CSKEY_H; // unlock CS
     CSCTL4 &= ~XT1OFF; // make sure XT1 is on
     CSCTL2 = SELA__XT1CLK | SELS__DCOCLK | SELM__DCOCLK; // ACLK source is XT1CLK ~ 32,768 Hz
     CSCTL3 &= ~(0x0700); // ACLK input divider /1
@@ -117,6 +115,8 @@ void initial()
     TA0CCR0 = 61439 * TIME_SCALAR; // the timer will overflow at ~ exactly 15 sec, note 61440 - 1 since up mode will count one extra tick before overflow flag // changed this due to comment in top of convert_timer
     TA0CCTL0 &= ~(CM_3 | CAP); // no capture
     TA0CCTL0 |= CCIE; // interrupt on control register enabled
+
+    TA0CCTL1 &= ~(CM_3 | CAP);
 
     // turn timers on
     TA0CTL |= MC_1; // up mode
@@ -164,6 +164,7 @@ void initial()
 
 void main(void)
 {
+
     initial();
 
     while(1)
@@ -181,8 +182,7 @@ __interrupt void button_ISR(void)
     // remember which button has been pressed
     unsigned int port_interrupts = P4IFG;
 
-    unsigned int start = TA0R;
-
+    // unsigned int start = TA0R;
     // while ( (unsigned int)(TA0R - start) < 40 * 1/TIME_SCALAR ) // button debounce not sure how to change to not polling
     // {
     //     __no_operation();
@@ -190,7 +190,8 @@ __interrupt void button_ISR(void)
     // ^^^: This is currently a blocking delay inside the button ISR The CPU cannot handle other interrupt work normally while this is running !
     // Consider changing the debounce to use timer-based timing maybeee // i know (im crine), im not sure how to change this to interrupt based
 
-    TA0CCR1 = start + 40 * 1/TIME_SCALAR; // change TIME_SCALAR to 1 at the top when on a board with working XT1
+    unsigned int start = TA0R;
+    TA0CCR1 = start + 120; // change this 120 to something more appropriate for 32 kHz
     if (TA0CCR1 > TA0CCR0)
     {
         TA0CCR1 = TA0CCR1 - (TA0CCR0 + 1);
@@ -201,7 +202,7 @@ __interrupt void button_ISR(void)
     __disable_interrupt();
     TA0CCTL1 &= ~CCIE;
 
-    // add a check to see if the button is still pressed? note use P4IN
+    // add a check to see if the button is still pressed?
 
     // change the state of timers i.e. load different values into TA1CCTL0 for TA0CCR0 interrupts to TIMER1_A0_VECTOR
     if ( ( port_interrupts & BIT1 ) ) // this will detect both cases of S2 alone and S1 with S2 giving S2 priority
@@ -238,10 +239,12 @@ __interrupt void button_ISR(void)
                 P3OUT |= LED5 | LED6 | LED7 | LED8;
 
                 // UART logging
+                __enable_interrupt();
                 printstr("[ ");
                 convert_timer(time);
                 printstr(time);
-                printstr("  ms ] S2 -> EMERGENCY CALL : EXIT IDLE\n\r");
+                printstr(" ms ] S2 -> EMERGENCY CALL : EXIT IDLE\n\r");
+                __disable_interrupt();
 
                 break;
 
@@ -280,10 +283,12 @@ __interrupt void button_ISR(void)
                     P3OUT &= ~(LED5 | LED6 | LED7 | LED8);
 
                     // UART logging
+                    __enable_interrupt();
                     printstr("[ ");
                     convert_timer(time);
                     printstr(time);
-                    printstr("  ms ] S2 -> EXIT EMERGENCY CALL : RESUME NORMAL CALL\n\r");
+                    printstr(" ms ] S2 -> EXIT EMERGENCY CALL : RESUME NORMAL CALL\n\r");
+                    __disable_interrupt();
 
                 }
                 else // normal_suspended == FALSE
@@ -306,10 +311,12 @@ __interrupt void button_ISR(void)
                     P3OUT &= ~(LED5 | LED6 | LED7 | LED8);
 
                     // UART logging
+                    __enable_interrupt();
                     printstr("[ ");
                     convert_timer(time);
                     printstr(time);
-                    printstr("  ms ] S2 -> EMERGENCY CALL COMPLETE\n\r");
+                    printstr(" ms ] S2 -> EMERGENCY CALL COMPLETE\n\r");
+                    __disable_interrupt();
 
                 }
 
@@ -346,10 +353,12 @@ __interrupt void button_ISR(void)
                 P3OUT |= LED5 | LED6 | LED7 | LED8;
 
                 // UART logging
+                __enable_interrupt();
                 printstr("[ ");
                 convert_timer(time);
                 printstr(time);
-                printstr("  ms ] S2 -> EMERGENCY CALL : SUSPEND NORMAL CALL\n\r");
+                printstr(" ms ] S2 -> EMERGENCY CALL : SUSPEND NORMAL CALL\n\r");
+                __disable_interrupt();
 
                 break;
 
@@ -395,10 +404,12 @@ __interrupt void button_ISR(void)
                 S1_LED_state = 1;
 
                 // UART logging
+                __enable_interrupt();
                 printstr("[ ");
                 convert_timer(time);
                 printstr(time);
-                printstr("  ms ] S1 -> NORMAL CALL : EXIT IDLE\n\r");
+                printstr(" ms ] S1 -> NORMAL CALL : EXIT IDLE\n\r");
+                __disable_interrupt();
 
                 break;
             case NORMAL:
@@ -422,10 +433,12 @@ __interrupt void button_ISR(void)
                 PJOUT &= ~(LED1 | LED2 | LED3 | LED4);
 
                 // UART logging
+                __enable_interrupt();
                 printstr("[ ");
                 convert_timer(time);
                 printstr(time);
-                printstr("  ms ] S1 -> NORMAL CALL COMPLETE\n\r");
+                printstr(" ms ] S1 -> NORMAL CALL COMPLETE\n\r");
+                __disable_interrupt();
 
                 break;
             case EMERGENCY:
@@ -436,10 +449,12 @@ __interrupt void button_ISR(void)
                 // TODO: Confirm that the S1 interrupt flag is clleared corrrectly so that the ignored button press does not get processed after the emergency. // should be done by line 506 after the switch statement?
 
                 // UART logging
+                __enable_interrupt();
                 printstr("[ ");
                 convert_timer(time);
                 printstr(time);
-                printstr("  ms ] S1 -> NORMAL CALL IGNORED : EMERGENCY CALL ACTIVE\n\r");
+                printstr(" ms ] S1 -> NORMAL CALL IGNORED : EMERGENCY CALL ACTIVE\n\r");
+                __disable_interrupt();
 
                 break;
             default:
