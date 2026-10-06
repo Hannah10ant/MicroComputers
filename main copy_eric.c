@@ -19,6 +19,9 @@
 #define NORMAL     1
 #define EMERGENCY  2
 
+// change to 1 if using on working MSP430
+#define TIME_SCALAR 0.25
+
 // tracks which process has priority
 volatile unsigned char current_task = IDLE;
 
@@ -86,8 +89,6 @@ void convert_timer(volatile char final[11])
         final[ 9 - idx ] = (total_time_ms % 10) + '0';
         total_time_ms = total_time_ms / 10;
     }
-
-     // TODO: Make sure final[10] = '\0' is set before returning printstr() expects the timestamp to be null-terminated :p // if wanted can add final[10] = '\0', but this for loop only goes to final[ (2 * 4) + 1 ] = final[9]
 }
 
 void initial()
@@ -113,7 +114,7 @@ void initial()
     TA0CTL |= TACLR; // clear TA0R to start from known
    // Hannah TODO: Check the assignment requirements regarding Timer_A0..... 
 
-    TA0CCR0 = 61439; // the timer will overflow at ~ exactly 15 sec, note 61440 - 1 since up mode will count one extra tick before overflow flag // changed this due to comment in top of convert_timer
+    TA0CCR0 = 61439 * TIME_SCALAR; // the timer will overflow at ~ exactly 15 sec, note 61440 - 1 since up mode will count one extra tick before overflow flag // changed this due to comment in top of convert_timer
     TA0CCTL0 &= ~(CM_3 | CAP); // no capture
     TA0CCTL0 |= CCIE; // interrupt on control register enabled
 
@@ -182,14 +183,14 @@ __interrupt void button_ISR(void)
 
     unsigned int start = TA0R;
 
-    // while ( (unsigned int)(TA0R - start) < 120 ) // button debounce not sure how to change to not polling
+    // while ( (unsigned int)(TA0R - start) < 40 * 1/TIME_SCALAR ) // button debounce not sure how to change to not polling
     // {
     //     __no_operation();
     // }
     // ^^^: This is currently a blocking delay inside the button ISR The CPU cannot handle other interrupt work normally while this is running !
     // Consider changing the debounce to use timer-based timing maybeee // i know (im crine), im not sure how to change this to interrupt based
 
-    TA0CCR1 = start + 120; // change this 120 to something more appropriate for 32 kHz
+    TA0CCR1 = start + 40 * 1/TIME_SCALAR; // change TIME_SCALAR to 1 at the top when on a board with working XT1
     if (TA0CCR1 > TA0CCR0)
     {
         TA0CCR1 = TA0CCR1 - (TA0CCR0 + 1);
@@ -223,7 +224,7 @@ __interrupt void button_ISR(void)
                 current_task = EMERGENCY;
 
                 // set up the correct timer values, in emergency need ~150 ms delay at 4096 Hz this is about 615 ticks
-                TA1CCR0 = 615;
+                TA1CCR0 = 615 * TIME_SCALAR;
 
                 // do not set TA1CTL = TAIE since thats the overflow flag, i.e. not what is needed for up mode
                 // enable interrupts from the capture/compare register
@@ -262,8 +263,8 @@ __interrupt void button_ISR(void)
 
                     normal_suspended = FALSE;
 
-                    // load the different interrupt time into capture/compare register, ~600 ms at 4096 Hz requires 2548 ticks
-                    TA1CCR0 = 2548;
+                    // load the different interrupt time into capture/compare register, ~600  ms at 4096 Hz requires 2548 ticks
+                    TA1CCR0 = 2458 * TIME_SCALAR;
 
                     // load the remembered time into the TA1R to continue from where the timer left off
                     TA1R = normal_timer_mem;
@@ -332,7 +333,7 @@ __interrupt void button_ISR(void)
                 current_task = EMERGENCY;
 
                 // load the different interrupt time into capture/compare register
-                TA1CCR0 = 615;
+                TA1CCR0 = 615 * TIME_SCALAR;
 
                 // enable TA1CCTL0 interrupts
                 TA1CCTL0 &= ~CCIFG;
@@ -380,7 +381,7 @@ __interrupt void button_ISR(void)
                 current_task = NORMAL;
 
                 // load normal interrupt time into capture/compare
-                TA1CCR0 = 2548;
+                TA1CCR0 = 2458 * TIME_SCALAR;
 
                 // enable TA1CCTL0 interrupts
                 TA1CCTL0 &= ~CCIFG;
