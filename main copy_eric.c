@@ -97,13 +97,25 @@ void initial()
     TA0CTL = 0x0000;
     TA1CTL = 0x0000;
 
+    PJDIR = 0x01;
+
     CSCTL0_H = CSKEY_H; // unlock CS
     CSCTL4 &= ~XT1OFF; // make sure XT1 is on
+    CSCTL2 &= ~(SELA__XT1CLK | SELS__DCOCLK | SELM__DCOCLK);
     CSCTL2 = SELA__XT1CLK | SELS__DCOCLK | SELM__DCOCLK; // ACLK source is XT1CLK ~ 32,768 Hz
     CSCTL3 &= ~(0x0700); // ACLK input divider /1
     CSCTL4 &= ~XT1DRIVE_3;
     CSCTL4 &= ~XTS;
+
+    CSCTL5 |= ENSTFCNT1;
+    do 
+    {
+        CSCTL5 &= ~XT1OFFG;
+        SFRIFG1 &= ~OFIFG;
+        PJOUT ^= 0x01;
+    } while ( SFRIFG1 & OFIFG );
     CSCTL0_H = 0;
+    PJOUT = 0x00;
 
     // timer 0
     TA0CTL &= ~MC_3; // turn the timer off to ensure stable config
