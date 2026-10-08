@@ -167,6 +167,11 @@ void main(void)
 
     initial();
 
+    printstr("[ ");
+    convert_timer(time);
+    printstr(time);
+    printstr(" ms ] EXITING STARTUP -> ENTERING IDLE\n\r");
+
     while(1)
     {
         __low_power_mode_0();
