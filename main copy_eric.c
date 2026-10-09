@@ -64,14 +64,6 @@ void printstr(volatile char * str)
     UCA0IE |= UCTXIE;
 
     _low_power_mode_0();
-
-    // char i = 0;
-    // while (str[i] != '\0') { // check if end of string
-    //     UCA0TXBUF = str[i]; // load character into transmitter buffer
-    //     while (UCA0STATW & UCBUSY); // check whether the transmitter is busy sending a char
-
-    //     i++; // increment index
-    // }
 }
 
 void convert_timer(volatile char final[11])
