@@ -101,7 +101,7 @@ void initial()
 
     CSCTL0_H = CSKEY_H; // unlock CS
     CSCTL4 &= ~XT1OFF; // make sure XT1 is on
-    CSCTL2 &= ~(SELA__XT1CLK | SELS__DCOCLK | SELM__DCOCLK);
+    CSCTL2 &= ~(0x0777); // set the clock source select bits to zero
     CSCTL2 = SELA__XT1CLK | SELS__DCOCLK | SELM__DCOCLK; // ACLK source is XT1CLK ~ 32,768 Hz
     CSCTL3 &= ~(0x0700); // ACLK input divider /1
     CSCTL4 &= ~XT1DRIVE_3;
