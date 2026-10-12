@@ -225,35 +225,54 @@ initial_loop:
 
         MOV.B     #0,&CSCTL0_H+0        ; Sets to 0
         MOV.W     #0,&PJOUT+0           ; Sets LED1-4 off
-        AND.W     #65487,&TA0CTL+0      ; 
-        OR.W      #256,&TA0CTL+0      ; [] |114| 
-        OR.W      #192,&TA0CTL+0      ; [] |115| 
-        OR.W      #4,&TA0CTL+0          ; [] |116| 
-        MOV.W     #15359,&TA0CCR0+0     ; [] |119| 
-        AND.W     #16127,&TA0CCTL0+0    ; [] |120| 
-        OR.W      #16,&TA0CCTL0+0       ; [] |121| 
-        AND.W     #16127,&TA0CCTL1+0    ; [] |123| 
-        OR.W      #16,&TA0CTL+0         ; [] |126| 
-        AND.W     #65487,&TA1CTL+0      ; [] |129| 
-        OR.W      #256,&TA1CTL+0      ; [] |130| 
-        OR.W      #192,&TA1CTL+0      ; [] |131| 
-        OR.W      #4,&TA1CTL+0          ; [] |132| 
-        AND.W     #16127,&TA1CCTL0+0    ; [] |134| 
-        MOV.W     #15,&PJDIR+0          ; [] |137| 
-        MOV.B     #240,&PBDIR_L+0     ; [] |138| 
-        MOV.B     #0,&PBDIR_H+0         ; [] |139| 
-        OR.B      #3,&PBREN_H+0         ; [] |142| 
-        OR.B      #3,&PBOUT_H+0         ; [] |143| 
-        OR.B      #3,&PBIES_H+0         ; [] |146| 
-        AND.B     #252,&PBIFG_H+0     ; [] |149| 
-        AND.W     #65520,&PJOUT+0       ; [] |152| 
-        AND.B     #15,&PBOUT_L+0        ; [] |153| 
-        MOV.B     #3,&PASEL1_H+0        ; [] |156| 
-        MOV.B     #129,&UCA0CTLW0_L+0 ; [] |157| 
-        MOV.W     #6,&UCA0BRW+0         ; [] |158| 
-        MOV.W     #8321,&UCA0MCTLW+0  ; [] |159| 
-        BIC.B     #1,&UCA0CTLW0_L+0     ; [] |160| 
-        OR.B      #3,&PBIE_H+0          ; [] |163| 
+
+        ; Timer 0 config
+        AND.W     #65487,&TA0CTL+0      ; Turns off timer to give a stable config
+        OR.W      #256,&TA0CTL+0      ; ALCK
+        OR.W      #192,&TA0CTL+0      ; 8 -> 4096 Hz
+        OR.W      #4,&TA0CTL+0          ; Clears TAOR so it starts from a known
+        MOV.W     #15359,&TA0CCR0+0     ; Timer overflows at 15 sec
+        AND.W     #16127,&TA0CCTL0+0    ; No capture mode
+        OR.W      #16,&TA0CCTL0+0       ; Enables interrupts
+        AND.W     #16127,&TA0CCTL1+0    ; Turns timers on
+        OR.W      #16,&TA0CTL+0         ; Sets timer to up mode 
+
+        ; Timer 1 config
+        AND.W     #65487,&TA1CTL+0      ; Turns timer off for stable config
+        OR.W      #256,&TA1CTL+0      ; ALCK
+        OR.W      #192,&TA1CTL+0      ; 8 -> 4096 Hz
+        OR.W      #4,&TA1CTL+0          ; Clears TAOR so it starts from a known
+        AND.W     #16127,&TA1CCTL0+0    ; No capture mode
+
+        ; GPIO configs 
+        MOV.W     #15,&PJDIR+0          ; Sets upper nibble of PJ as output
+        MOV.B     #240,&PBDIR_L+0     ; Sets lower nibble fo P3 (PB_L) as output
+        MOV.B     #0,&PBDIR_H+0         ; Sets P4 (PB_H) as input
+
+        ; Enables pull up on buttons for active low
+        OR.B      #3,&PBREN_H+0          
+        OR.B      #3,&PBOUT_H+0         
+
+        ; Interrupts occurs on high to low
+        OR.B      #3,&PBIES_H+0         
+
+        ; Clears existing interrupt flags 
+        AND.B     #252,&PBIFG_H+0     
+
+        ; Resets LEDs 1-8 to knowns 
+        AND.W     #65520,&PJOUT+0        
+        AND.B     #15,&PBOUT_L+0        
+
+        ; Sets UART
+        ; 9600 baud from 1MHz DCO CLK 
+        MOV.B     #3,&PASEL1_H+0         
+        MOV.B     #129,&UCA0CTLW0_L+0 
+        MOV.W     #6,&UCA0BRW+0         
+        MOV.W     #8321,&UCA0MCTLW+0   
+        BIC.B     #1,&UCA0CTLW0_L+0    
+
+        ; Enables button interrupts 
+        OR.B      #3,&PBIE_H+0      
         NOP
         BIS.W    #8,SR
         NOP       
@@ -363,15 +382,15 @@ button_ISR:
         ADD.W     #120,r15              ; [] |203| 
         MOV.W     r15,&TA0CCR1+0        ; [] |203| 
         CMP.W     &TA0CCR1+0,&TA0CCR0+0 ; [] |204| 
-        JHS       $C$L12                ; [] |204| 
-                                          ; [] |204| 
+        JHS       Button_Debounce_Done  ; if (TA0CCR1 < TA0CCR0)
+
 ;* ---------------
         MOV.W     &TA0CCR1+0,r15        ; [] |206| 
         SUB.W     &TA0CCR0+0,r15        ; [] |206| 
         SUB.W     #1,r15                ; [] |206| 
         MOV.W     r15,&TA0CCR1+0        ; [] |206| 
 ;* ---------------
-$C$L12:    
+Button_Debounce_Done:    
         OR.W      #16,&TA0CCTL1+0       ; [] |208| 
         NOP
         EINT
@@ -382,8 +401,10 @@ $C$L12:
         DINT
         NOP      ; [] |211| 
         AND.W     #65519,&TA0CCTL1+0    ; [] |212| 
+
+;* --------------
         BIT.B     #2,r14                ; [] |220| 
-        JNE       $C$L16                ; [] |220| 
+        JNE       Current_Task                ; [] |220| 
                                           ; [] |220| 
 ;* ---------------
         BIT.B     #1,r14                ; [] |385| 
@@ -485,14 +506,14 @@ $C$L15:
         JMP       $C$L21                ; [] |474| 
                                           ; [] |474| 
 ;* ---------------
-$C$L16:    
+Current_Task:    
         MOV.B     &current_task+0,r15   ; [] |220| 
         TST.W     r15                   ; [] |220| 
-        JEQ       $C$L19                ; [] |220| 
+        JEQ       Normal_Idle                ; [] |220| 
                                           ; [] |220| 
 ;* ---------------
         SUB.W     #1,r15                ; [] |220| 
-        JEQ       $C$L18                ; [] |220| 
+        JEQ       Normal                ; [] |220| 
                                           ; [] |220| 
 ;* ---------------
         SUB.W     #1,r15                ; [] |220| 
@@ -500,7 +521,7 @@ $C$L16:
                                           ; [] |220| 
 ;* ---------------
         TST.B     &normal_suspended+0   ; [] |262| 
-        JNE       $C$L17                ; [] |262| 
+        JNE       Emegency_Normal_Suspended                ; [] |262| 
                                           ; [] |262| 
 ;* ---------------
         AND.W     #65487,&TA1CTL+0      ; [] |306| 
@@ -529,7 +550,7 @@ $C$L16:
         JMP       $C$L20                ; [] |328| 
                                           ; [] |328| 
 ;* --------------
-$C$L17:    
+Emegency_Normal_Suspended:    
         AND.W     #65487,&TA1CTL+0      ; [] |265| 
         AND.W     #65519,&TA1CCTL0+0    ; [] |268| 
         OR.W      #4,&TA1CTL+0          ; [] |271| 
@@ -561,7 +582,7 @@ $C$L17:
         JMP       $C$L20                ; [] 
                                           ; [] 
 ;* --------------
-$C$L18:    
+Normal:    
         AND.W     #65487,&TA1CTL+0      ; [] |336| 
         MOV.W     &TA1R+0,&normal_timer_mem+0 ; [] |339| 
         AND.W     #65519,&TA1CCTL0+0    ; [] |342| 
@@ -593,7 +614,7 @@ $C$L18:
         JMP       $C$L20                ; [] |372| 
                                           ; [] |372| 
 ;* --------------
-$C$L19:    
+Normal_Idle:    
         AND.W     #65487,&TA1CTL+0      ; [] |225| 
         AND.W     #65519,&TA1CCTL0+0    ; [] |228| 
         OR.W      #4,&TA1CTL+0          ; [] |231| 
