@@ -375,31 +375,31 @@ Low_Power_Loop:
 
 ; ISR Button
 button_ISR:
-        PUSHM.A   #5,r15                ; [] 
-        AND.B     #252,&PBIE_H+0        ; [] |189| 
-        MOV.B     &PBIFG_H+0,r14        ; [] |192| 
-        MOV.W     &TA0R+0,r15           ; [] |202| 
-        ADD.W     #120,r15              ; [] |203| 
-        MOV.W     r15,&TA0CCR1+0        ; [] |203| 
-        CMP.W     &TA0CCR1+0,&TA0CCR0+0 ; [] |204| 
-        JHS       Button_Debounce_Done  ; if (TA0CCR1 < TA0CCR0)
+        PUSHM.A   #5,r15                ; saves registers R15, R14, R13, R12, R11 on the stack
+        AND.B     #252,&P4IE          ; port 4 interrupt enable #252 = #0xFC
+        MOV.B     &P4IFG,r14            ; remember which interrupt flags were set in P4IFG in R14
+        MOV.W     &TA0R,r15             ; remember the start point of TA0R in R15
+        ADD.W     #120,r15            ; add 120 to the remembered TA0R as count up to value
+        MOV.W     r15,&TA0CCR1          ; move the count to value into TA0CCR1
+        CMP.W     &TA0CCR1+0,&TA0CCR0+0 ; compare the two registers
+        JHS       Button_Debounce_Done  ; jump if higher or same : if (TA0CCR1 < TA0CCR0)
 
 ;* ---------------
-        MOV.W     &TA0CCR1+0,r15        ; [] |206| 
-        SUB.W     &TA0CCR0+0,r15        ; [] |206| 
-        SUB.W     #1,r15                ; [] |206| 
-        MOV.W     r15,&TA0CCR1+0        ; [] |206| 
+        MOV.W     &TA0CCR1+0,r15        ; if TA0CCR1 exceeds the system count up value
+        SUB.W     &TA0CCR0+0,r15        ; subtract the system count up value from TA0CCR1
+        SUB.W     #1,r15                ; subtract one for one off error
+        MOV.W     r15,&TA0CCR1+0        ; move the new value into TA0CCR1
 ;* ---------------
 Button_Debounce_Done:    
-        OR.W      #16,&TA0CCTL1+0       ; [] |208| 
+        OR.W      #16,&TA0CCTL1         ; enable TA0CCR1 interrupts, #16 = #0x0010
+        NOP                             ; recommended NOP before EINT
+        EINT                            ; enable interrupts
+        NOP                             ; instruction immediately after EINT is always run
         NOP
-        EINT
-        NOP      ; [] |209| 
-        NOP
-        BIS.W    #24,SR
-        NOP      ; [] |210| 
-        DINT
-        NOP      ; [] |211| 
+        BIS.W    #16,SR                 ; CPU OFF and GIE bits, was 24 changed to 16 because EINT already turns on GIE, waiting for timer interrupt
+        NOP                             ; which techincally means you could remove the __enable_interrupt() on line 209 if using #24
+        DINT                            ; disable interrupts
+        NOP                             ; 
         AND.W     #65519,&TA0CCTL1+0    ; [] |212| 
 
 ;* --------------

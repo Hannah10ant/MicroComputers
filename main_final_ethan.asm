@@ -375,281 +375,292 @@ Low_Power_Loop:
 
 ; ISR Button
 button_ISR:
-        PUSHM.A   #5,r15                ; [] 
-        AND.B     #252,&PBIE_H+0        ; [] |189| 
-        MOV.B     &PBIFG_H+0,r14        ; [] |192| 
-        MOV.W     &TA0R+0,r15           ; [] |202| 
-        ADD.W     #120,r15              ; [] |203| 
-        MOV.W     r15,&TA0CCR1+0        ; [] |203| 
-        CMP.W     &TA0CCR1+0,&TA0CCR0+0 ; [] |204| 
-        JHS       Button_Debounce_Done  ; if (TA0CCR1 < TA0CCR0)
+        PUSHM.A   #5,r15                ; saves registers R15, R14, R13, R12, R11 on the stack
+        AND.B     #252,&P4IE          ; port 4 interrupt enable #252 = #0xFC
+        MOV.B     &P4IFG,r14            ; remember which interrupt flags were set in P4IFG in R14
+        MOV.W     &TA0R,r15             ; remember the start point of TA0R in R15
+        ADD.W     #120,r15            ; add 120 to the remembered TA0R as count up to value
+        MOV.W     r15,&TA0CCR1          ; move the count to value into TA0CCR1
+        CMP.W     &TA0CCR1+0,&TA0CCR0   ; compare the two registers
+        JHS       Debnce_timr_ovrflow   ; jump if higher or same : if (TA0CCR1 < TA0CCR0)
 
 ;* ---------------
-        MOV.W     &TA0CCR1+0,r15        ; [] |206| 
-        SUB.W     &TA0CCR0+0,r15        ; [] |206| 
-        SUB.W     #1,r15                ; [] |206| 
-        MOV.W     r15,&TA0CCR1+0        ; [] |206| 
+        MOV.W     &TA0CCR1,r15          ; if TA0CCR1 exceeds the system count up value
+        SUB.W     &TA0CCR0,r15          ; subtract the system count up value from TA0CCR1
+        SUB.W     #1,r15                ; subtract one for one off error
+        MOV.W     r15,&TA0CCR1          ; move the new value into TA0CCR1
 ;* ---------------
-Button_Debounce_Done:    
-        OR.W      #16,&TA0CCTL1+0       ; [] |208| 
+Debnce_timr_ovrflow      
+        OR.W      #16,&TA0CCTL1         ; enable TA0CCR1 interrupts, #16 = #0x0010
+        NOP                             ; recommended NOP before EINT
+        EINT                            ; enable interrupts
+        NOP                             ; instruction immediately after EINT is always run
         NOP
-        EINT
-        NOP      ; [] |209| 
-        NOP
-        BIS.W    #24,SR
-        NOP      ; [] |210| 
-        DINT
-        NOP      ; [] |211| 
-        AND.W     #65519,&TA0CCTL1+0    ; [] |212| 
+        BIS.W    #16,SR                 ; CPU OFF and GIE bits, was 24 changed to 16 because EINT already turns on GIE, waiting for timer interrupt
+        NOP                             ; which techincally means you could remove the __enable_interrupt() on line 209 if using #24
+        DINT                            ; disable interrupts
+        NOP                             ; recommended NOP after DINT
+        AND.W     #65519,&TA0CCTL1      ; disable interrupts from TA0CCR1, 65519 = 0xFFEF
 
 ;* --------------
-        BIT.B     #2,r14                ; [] |220| 
-        JNE       Current_Task                ; [] |220| 
-                                          ; [] |220| 
+        BIT.B     #2,r14                ; R14 holds the P4IFG flags, check if it has S2
+        JNE       S2_event                ; jump not equal -> if S2 switch jump to S2_event, JNE checks Z flag, if #2 = r14 then Z = 0 so not equal
+                                        ; in essence the if statement, any logic past this has no emergency
 ;* ---------------
-        BIT.B     #1,r14                ; [] |385| 
-        JEQ       $C$L21                ; [] |385| 
-                                          ; [] |385| 
+        BIT.B     #1,r14                ; R14 holds the P4IFG flags, check if it has S1
+        JEQ       end_of_button_ISR                ; if R14 doesnt hold S1 then jump to end of ISR
+                                        ; in essence the else if statement, any logic past this has S1 but not S2
 ;* ---------------
-        MOV.B     &current_task+0,r15   ; [] |385| 
-        TST.W     r15                   ; [] |385| 
-        JEQ       $C$L14                ; [] |385| 
-                                          ; [] |385| 
+        MOV.B     &current_task,r15     ; move the current_task to R15
+        TST.W     r15                   ; compare the R15 register with 0, i.e. test if current_task == 0
+        JEQ       idle_to_normal                ; jump to idle_to_normal if current task = IDLE && S1 event
+
 ;* ---------------
-        SUB.W     #1,r15                ; [] |385| 
-        JEQ       $C$L13                ; [] |385| 
-                                          ; [] |385| 
+        SUB.W     #1,r15                ; test if R15 is 1 (NORMAL)
+        JEQ       exit_normal                ; jump if R15 is current task = NORMAL
+                                        ; note that R15 now holds 1 if case is emergency (2 - 1 = 1)
+                                        ; holds 0 if case was normal
 ;* ---------------
-        SUB.W     #1,r15                ; [] |385| 
-        JNE       $C$L15                ; [] |385| 
-                                          ; [] |385| 
+        SUB.W     #1,r15                ; test if R15 == 1, i.e. if it has an emergency case
+        JNE       end_of_S1_case                ; if R15 != 0 then current task was neither 0, 1, or 2; jump to end of ISR
+                                        ; if R15 == 0 then current task was EMERGENCY and fall through to below
+
+;* normal button press : emergency active
+        NOP                             ; recommended NOP before EINT
+        EINT                            ; enable interrupts
+        NOP                             ; recommended NOP after EINT
+        MOV.W     #string1,r12          ; move string to be printed for beginning of logging "[ "
+        CALLA     #printstr             ; call printstr function, R12 is the register used for printing
+
+        MOV.W     #time,r12             ; move time string into R12
+        CALLA     #convert_timer        ; call convert timer function to fetch the latest timestamp
+
+        MOV.W     #time,r12             ; move time string into R12 (redundant i think)
+        CALLA     #printstr             ; call printstr function, prints the timestamp
+
+        MOV.W     #string3,r12          ; move string to be printed for normal button during emergency
+        CALLA     #printstr             ; call printstr function, prints the normal button during emergency string
+
+        NOP                             ; recommended NOP before DINT
+        DINT                            ; disable interrupts
+        NOP                             ; recommended NOP after DINT
+        JMP       end_of_S1_case                ; jump to end of S1 case
+
+;* normal button press : normal active
+exit_normal:
+        AND.W     #65487,&TA1CTL        ; turn off TA1, 65487 = ~MC_3
+        AND.W     #65519,&TA1CCTL0      ; turn off TA1CCR0 interrupts, 65519 = ~CCIE
+        OR.W      #4,&TA1CTL            ; reset TA1R
+        MOV.B     #0,&current_task      ; set current task to IDLE
+        MOV.W     #0,&TA1CCR0           ; reset TA1CCR0 to a known state
+        AND.W     #65520,&PJOUT         ; turn off all LEDs on port J lower bits
+        NOP                             ; recommended NOP before EINT
+        EINT                            ; enable interrupts
+        NOP                             ; recommended NOP after EINT
+        MOV.W     #string1,r12          ; move string to be printed for beginning of logging "[ "
+        CALLA     #printstr             ; call printstr function, R12 is the register used for printing
+
+        MOV.W     #time,r12             ; move time string into R12
+        CALLA     #convert_timer        ; call convert timer function to fetch the latest timestamp
+
+        MOV.W     #time,r12             ; move time string into R12
+        CALLA     #printstr             ; call printstr function, prints the timestamp
+
+        MOV.W     #string4,r12          ; move string to be printed for normal button during normal
+        CALLA     #printstr             ; call printstr function, prints the normal button during normal string
+
+        NOP                             ; recommended NOP before DINT
+        DINT                            ; disable interrupts
+        NOP                             ; recommended NOP after DINT
+        JMP       end_of_S1_case                ; jump to end of S1 case
+
+;* normal button press : sitting in idle
+idle_to_normal:
+        AND.W     #65487,&TA1CTL        ; turn off TA1, 65487 = ~MC_3
+        AND.W     #65519,&TA1CCTL0      ; disable TA1CCR0 interrupts, 65519 = ~CCIE
+        OR.W      #4,&TA1CTL            ; reset TA1R
+        MOV.B     #1,&current_task      ; set the current task to normal
+        MOV.W     #614,&TA1CCR0       ; load normal interrupt time into capture/compare [IMPORTANT CHANGE TO 2458 ON WORKING XT1]
+        BIC.W     #1,&TA1CCTL0          ; clear any pending interrupt flag
+        OR.W      #16,&TA1CCTL0         ; enable TA1CCR0 interrupts
+        OR.W      #16,&TA1CTL           ; turn on TA1
+        MOV.W     #1,&PJOUT             ; turn on LED1
+        MOV.B     #1,&S1_LED_state      ; set the LED state to 1, state 1 is with LED1 on
+        NOP                             ; recommended NOP before EINT
+        EINT                            ; enable interrupt
+        NOP                             ; recommended NOP after EINT
+        MOV.W     #string1,r12          ; move string to be printed for beginning of logging "[ "
+        CALLA     #printstr             ; call printstr function, R12 is the register used for printing
+
+        MOV.W     #time,r12             ; move time string into R12
+        CALLA     #convert_timer        ; call convert timer function to fetch the latest timestamp
+
+        MOV.W     #time,r12             ; move time string into R12
+        CALLA     #printstr             ; call printstr function, prints the timestamp
+
+        MOV.W     #string5,r12          ; move string to be printed for normal button during idle
+        CALLA     #printstr             ; call printstr function, prints the normal button during idle string
+
+        NOP                             ; recommended NOP before DINT
+        DINT                            ; disable interrupts
+        NOP                             ; recommended NOP after disable interrupts
+
+;* end of S1 case
+end_of_S1_case:
+        BIC.B     #1,&P4IFG             ; clear any S1 interrupt flag
+        JMP       end_of_button_ISR                ; jump to end of ISR
+
+;* emergency (S2) case
+S2_event:
+        MOV.B     &current_task,r15     ;
+        TST.W     r15                   ; test to see if current task == 0
+        JEQ       idle_to_emerg                ; if in IDLE jump to idle_to_emerg; idle -> emergency
+
 ;* ---------------
-        NOP       ; [] |455| 
-        NOP
-        EINT
-        NOP      ; [] |461| 
-        MOV.W     #string1+0,r12         ; [] |462| 
-        CALLA     #printstr             ; [] |462| 
-                                          ; [] |462| 
-        MOV.W     #time+0,r12           ; [] |463| 
-        CALLA     #convert_timer        ; [] |463| 
-                                          ; [] |463| 
-        MOV.W     #time+0,r12           ; [] |464| 
-        CALLA     #printstr             ; [] |464| 
-                                          ; [] |464| 
-        MOV.W     #string3+0,r12         ; [] |465| 
-        CALLA     #printstr             ; [] |465| 
-                                          ; [] |465| 
-        DINT
-        NOP      ; [] |466| 
-        JMP       $C$L15                ; [] |468| 
-                                          ; [] |468| 
-;* --------------
-$C$L13:    
-        AND.W     #65487,&TA1CTL+0      ; [] |427| 
-        AND.W     #65519,&TA1CCTL0+0    ; [] |430| 
-        OR.W      #4,&TA1CTL+0          ; [] |433| 
-        MOV.B     #0,&current_task+0    ; [] |436| 
-        MOV.W     #0,&TA1CCR0+0         ; [] |439| 
-        AND.W     #65520,&PJOUT+0       ; [] |442| 
-        NOP
-        EINT
-        NOP      ; [] |445| 
-        MOV.W     #string1+0,r12         ; [] |446| 
-        CALLA     #printstr             ; [] |446| 
-                                          ; [] |446| 
-        MOV.W     #time+0,r12           ; [] |447| 
-        CALLA     #convert_timer        ; [] |447| 
-                                          ; [] |447| 
-        MOV.W     #time+0,r12           ; [] |448| 
-        CALLA     #printstr             ; [] |448| 
-                                          ; [] |448| 
-        MOV.W     #string4+0,r12         ; [] |449| 
-        CALLA     #printstr             ; [] |449| 
-                                          ; [] |449| 
-        DINT
-        NOP      ; [] |450| 
-        JMP       $C$L15                ; [] |452| 
-                                          ; [] |452| 
-;* --------------
-$C$L14:    
-        AND.W     #65487,&TA1CTL+0      ; [] |390| 
-        AND.W     #65519,&TA1CCTL0+0    ; [] |393| 
-        OR.W      #4,&TA1CTL+0          ; [] |396| 
-        MOV.B     #1,&current_task+0    ; [] |399| 
-        MOV.W     #614,&TA1CCR0+0       ; [] |402| 
-        BIC.W     #1,&TA1CCTL0+0        ; [] |405| 
-        OR.W      #16,&TA1CCTL0+0       ; [] |406| 
-        OR.W      #16,&TA1CTL+0         ; [] |409| 
-        MOV.W     #1,&PJOUT+0           ; [] |412| 
-        MOV.B     #1,&S1_LED_state+0    ; [] |413| 
-        NOP
-        EINT
-        NOP      ; [] |416| 
-        MOV.W     #string1+0,r12         ; [] |417| 
-        CALLA     #printstr             ; [] |417| 
-                                          ; [] |417| 
-        MOV.W     #time+0,r12           ; [] |418| 
-        CALLA     #convert_timer        ; [] |418| 
-                                          ; [] |418| 
-        MOV.W     #time+0,r12           ; [] |419| 
-        CALLA     #printstr             ; [] |419| 
-                                          ; [] |419| 
-        MOV.W     #string5+0,r12         ; [] |420| 
-        CALLA     #printstr             ; [] |420| 
-                                          ; [] |420| 
-        DINT
-        NOP      ; [] |421| 
+        SUB.W     #1,r15                ; subtract 1 from R15, if in normal now R15 = 0
+        JEQ       normal_to_emerg                ; if in normal op jump to normal_to_emerg; normal -> emergency
+
 ;* ---------------
-$C$L15:    
-        BIC.B     #1,&PBIFG_H+0         ; [] |474| 
-        JMP       $C$L21                ; [] |474| 
-                                          ; [] |474| 
-;* ---------------
-Current_Task:    
-        MOV.B     &current_task+0,r15   ; [] |220| 
-        TST.W     r15                   ; [] |220| 
-        JEQ       Normal_Idle                ; [] |220| 
-                                          ; [] |220| 
-;* ---------------
-        SUB.W     #1,r15                ; [] |220| 
-        JEQ       Normal                ; [] |220| 
-                                          ; [] |220| 
-;* ---------------
-        SUB.W     #1,r15                ; [] |220| 
-        JNE       $C$L20                ; [] |220| 
-                                          ; [] |220| 
-;* ---------------
-        TST.B     &normal_suspended+0   ; [] |262| 
-        JNE       Emegency_Normal_Suspended                ; [] |262| 
-                                          ; [] |262| 
-;* ---------------
-        AND.W     #65487,&TA1CTL+0      ; [] |306| 
-        AND.W     #65519,&TA1CCTL0+0    ; [] |309| 
-        OR.W      #4,&TA1CTL+0          ; [] |312| 
-        MOV.B     #0,&current_task+0    ; [] |315| 
-        MOV.W     #0,&TA1CCR0+0         ; [] |317| 
-        AND.B     #15,&PBOUT_L+0        ; [] |320| 
-        NOP
-        EINT
-        NOP      ; [] |323| 
-        MOV.W     #string1+0,r12         ; [] |324| 
-        CALLA     #printstr             ; [] |324| 
-                                          ; [] |324| 
-        MOV.W     #time+0,r12           ; [] |325| 
-        CALLA     #convert_timer        ; [] |325| 
-                                          ; [] |325| 
-        MOV.W     #time+0,r12           ; [] |326| 
-        CALLA     #printstr             ; [] |326| 
-                                          ; [] |326| 
-        MOV.W     #string6+0,r12         ; [] |327| 
-        CALLA     #printstr             ; [] |327| 
-                                          ; [] |327| 
-        DINT
-        NOP      ; [] |328| 
-        JMP       $C$L20                ; [] |328| 
-                                          ; [] |328| 
-;* --------------
-Emegency_Normal_Suspended:    
-        AND.W     #65487,&TA1CTL+0      ; [] |265| 
-        AND.W     #65519,&TA1CCTL0+0    ; [] |268| 
-        OR.W      #4,&TA1CTL+0          ; [] |271| 
-        MOV.B     #1,&current_task+0    ; [] |274| 
-        MOV.B     #0,&normal_suspended+0 ; [] |276| 
-        MOV.W     #614,&TA1CCR0+0       ; [] |279| 
-        MOV.W     &normal_timer_mem+0,&TA1R+0 ; [] |282| 
-        BIC.W     #1,&TA1CCTL0+0        ; [] |285| 
-        OR.W      #16,&TA1CCTL0+0       ; [] |286| 
-        OR.W      #16,&TA1CTL+0         ; [] |289| 
-        AND.B     #15,&PBOUT_L+0        ; [] |292| 
-        NOP
-        EINT
-        NOP      ; [] |295| 
-        MOV.W     #string1+0,r12         ; [] |296| 
-        CALLA     #printstr             ; [] |296| 
-                                          ; [] |296| 
-        MOV.W     #time+0,r12           ; [] |297| 
-        CALLA     #convert_timer        ; [] |297| 
-                                          ; [] |297| 
-        MOV.W     #time+0,r12           ; [] |298| 
-        CALLA     #printstr             ; [] |298| 
-                                          ; [] |298| 
-        MOV.W     #string7+0,r12         ; [] |299| 
-        CALLA     #printstr             ; [] |299| 
-                                          ; [] |299| 
-        DINT
-        NOP      ; [] |300| 
-        JMP       $C$L20                ; [] 
-                                          ; [] 
-;* --------------
-Normal:    
-        AND.W     #65487,&TA1CTL+0      ; [] |336| 
-        MOV.W     &TA1R+0,&normal_timer_mem+0 ; [] |339| 
-        AND.W     #65519,&TA1CCTL0+0    ; [] |342| 
-        OR.W      #4,&TA1CTL+0          ; [] |345| 
-        MOV.B     #1,&normal_suspended+0 ; [] |348| 
-        MOV.B     #2,&current_task+0    ; [] |349| 
-        MOV.W     #153,&TA1CCR0+0       ; [] |352| 
-        BIC.W     #1,&TA1CCTL0+0        ; [] |355| 
-        OR.W      #16,&TA1CCTL0+0       ; [] |356| 
-        OR.W      #16,&TA1CTL+0         ; [] |359| 
-        OR.B      #240,&PBOUT_L+0       ; [] |362| 
-        NOP
-        EINT
-        NOP      ; [] |365| 
-        MOV.W     #string1+0,r12         ; [] |366| 
-        CALLA     #printstr             ; [] |366| 
-                                          ; [] |366| 
-        MOV.W     #time+0,r12           ; [] |367| 
-        CALLA     #convert_timer        ; [] |367| 
-                                          ; [] |367| 
-        MOV.W     #time+0,r12           ; [] |368| 
-        CALLA     #printstr             ; [] |368| 
-                                          ; [] |368| 
-        MOV.W     #string8+0,r12         ; [] |369| 
-        CALLA     #printstr             ; [] |369| 
-                                          ; [] |369| 
-        DINT
-        NOP      ; [] |370| 
-        JMP       $C$L20                ; [] |372| 
-                                          ; [] |372| 
-;* --------------
-Normal_Idle:    
-        AND.W     #65487,&TA1CTL+0      ; [] |225| 
-        AND.W     #65519,&TA1CCTL0+0    ; [] |228| 
-        OR.W      #4,&TA1CTL+0          ; [] |231| 
-        MOV.B     #2,&current_task+0    ; [] |234| 
-        MOV.W     #153,&TA1CCR0+0       ; [] |237| 
-        BIC.W     #1,&TA1CCTL0+0        ; [] |241| 
-        OR.W      #16,&TA1CCTL0+0       ; [] |242| 
-        OR.W      #16,&TA1CTL+0         ; [] |245| 
-        OR.B      #240,&PBOUT_L+0       ; [] |248| 
-        NOP
-        EINT
-        NOP      ; [] |251| 
-        MOV.W     #string1+0,r12         ; [] |252| 
-        CALLA     #printstr             ; [] |252| 
-                                          ; [] |252| 
-        MOV.W     #time+0,r12           ; [] |253| 
-        CALLA     #convert_timer        ; [] |253| 
-                                          ; [] |253| 
-        MOV.W     #time+0,r12           ; [] |254| 
-        CALLA     #printstr             ; [] |254| 
-                                          ; [] |254| 
-        MOV.W     #string9+0,r12         ; [] |255| 
-        CALLA     #printstr             ; [] |255| 
-                                          ; [] |255| 
-        DINT
-        NOP      ; [] |256| 
-;* ---------------
-$C$L20:    
-        AND.B     #252,&PBIFG_H+0       ; [] |379| 
-;* ---------------
-$C$L21:    
-        OR.B      #3,&PBIE_H+0          ; [] |479| 
-        POPM.A    #5,r15                ; [] 
-        RETI      ; [] 
-        ; [] 
+        SUB.W     #1,r15                ; subtract 1 from R15, if in emergency now R15 = 0
+        JNE       end_of_S2_case                ; if not in emergency jump to end of emergency case
+
+;* emergency button press : emergency active
+        TST.B     &normal_suspended     ; check if a normal suspend holds value of 0
+        JNE       emerg_normal_sus                ; if normal suspend == 1 then jump to emerg_normal_sus
+
+;* emergency button press : emergency active ; normal call not suspended
+        AND.W     #65487,&TA1CTL        ; turn off TA1, 65487 = ~MC_3
+        AND.W     #65519,&TA1CCTL0      ; disable TA1CCR0 interrupts, 65519 = ~CCIE
+        OR.W      #4,&TA1CTL            ; reset TA1R
+        MOV.B     #0,&current_task      ; set current task to IDLE
+        MOV.W     #0,&TA1CCR0           ; reset TA1CCR0 to a known value
+        AND.B     #15,&P3OUT            ; turn of port 3 LEDs
+        NOP                             ; recommended NOP before EINT
+        EINT                            ; enable interrupts
+        NOP                             ; recommended NOP after EINT
+        MOV.W     #string1,r12          ; move string to be printed for beginning of logging "[ "
+        CALLA     #printstr             ; call printstr function, R12 is the register used for printing
+
+        MOV.W     #time,r12             ; move time string into R12
+        CALLA     #convert_timer        ; call convert timer function to fetch the latest timestamp
+
+        MOV.W     #time,r12             ; move time string into R12
+        CALLA     #printstr             ; call printstr function, prints the timestamp
+
+        MOV.W     #string6,r12          ; move string to be printed for emergency button during emergency and normal not suspended
+        CALLA     #printstr             ; call printstr function, prints the emergency button during emergency and normal not suspended
+
+        NOP                             ; recommended NOP before DINT
+        DINT                            ; disable interrupts 
+        NOP                             ; recommended NOP after DINT
+        JMP       end_of_S2_case                ; jump to end of S2 case
+
+;* emergency button press : emergency active ; normal call suspended
+emerg_normal_sus:    
+        AND.W     #65487,&TA1CTL                ; turn off TA1, 65487 = ~MC_3
+        AND.W     #65519,&TA1CCTL0              ; disable TA1CCR0 interrupts, 65519 = ~CCIE
+        OR.W      #4,&TA1CTL                    ; reset TA1R
+        MOV.B     #1,&current_task              ; change current task to NORMAL
+        MOV.B     #0,&normal_suspended          ; clear the normal suspended variable
+        MOV.W     #614,&TA1CCR0               ; load normal count up into TA1CCR0 [IMPORTANT CHANGE TO 2458 ON WORKING XT1]
+        MOV.W     &normal_timer_mem,&TA1R       ; load the stored remembered count up time into TA1R
+        BIC.W     #1,&TA1CCTL0                  ; reset any pending interrupt flags from TA1CCR0
+        OR.W      #16,&TA1CCTL0                 ; turn on TA1CCR0 interrupts
+        OR.W      #16,&TA1CTL                   ; turn on TA1
+        AND.B     #15,&P3OUT                    ; turn of emergency LEDs 15 = 0x0F
+        NOP                                     ; recommended NOP before EINT
+        EINT                                    ; enable interrupts
+        NOP                                     ; recommended NOP after EINT
+        MOV.W     #string1,r12                  ; move string to be printed for beginning of logging "[ "
+        CALLA     #printstr                     ; call printstr function, R12 is the register used for printing
+
+        MOV.W     #time,r12                     ; move time string into R12
+        CALLA     #convert_timer                ; call convert timer function to fetch the latest timestamp
+
+        MOV.W     #time,r12                     ; move time string into R12
+        CALLA     #printstr                     ; call printstr function, prints the timestamp
+
+        MOV.W     #string7,r12                  ; move string to be printed for emergency button during emergency and normal suspended
+        CALLA     #printstr                     ; call printstr function, prints the emergency button during emergency and normal suspended
+
+        NOP                                     ; recommended NOP before DINT
+        DINT                                    ; disable interrupts
+        NOP                                     ; recommended NOP after DINT
+        JMP       end_of_S2_case                        ; jump to end of S2 case
+
+;* emergency button press : normal active
+normal_to_emerg:
+        AND.W     #65487,&TA1CTL                ; turn off TA1, 65487 = ~MC_3
+        MOV.W     &TA1R,&normal_timer_mem       ; record the stopped normal timer value
+        AND.W     #65519,&TA1CCTL0              ; disable TA1CCR0 interrupts, 65519 = ~CCIE
+        OR.W      #4,&TA1CTL                    ; reset TA1R
+        MOV.B     #1,&normal_suspended          ; set the normal suspended variable
+        MOV.B     #2,&current_task              ; set the current task to EMERGENCY
+        MOV.W     #153,&TA1CCR0               ; load emergency interrupt time into capture/compare [IMPORTANT CHANGE TO 615 ON WORKING XT1]
+        BIC.W     #1,&TA1CCTL0                  ; clear pending TA1CCR0 interrupts
+        OR.W      #16,&TA1CCTL0                 ; enable TA1CCR0 interrupts
+        OR.W      #16,&TA1CTL                   ; turn on TA1
+        OR.B      #240,&P3OUT                 ; turn on emergency LEDs
+        NOP                                     ; recommended NOP before EINT
+        EINT                                    ; enable interrupts
+        NOP                                     ; recommended NOP after EINT
+        MOV.W     #string1,r12                  ; move string to be printed for beginning of logging "[ "
+        CALLA     #printstr                     ; call printstr function, R12 is the register used for printing
+
+        MOV.W     #time,r12                     ; move time string into R12
+        CALLA     #convert_timer                ; call convert timer function to fetch the latest timestamp
+
+        MOV.W     #time,r12                     ; move time string into R12
+        CALLA     #printstr                     ; call printstr function, prints the timestamp
+
+        MOV.W     #string8,r12                  ; move string to be printed for emergency button during normal
+        CALLA     #printstr                     ; call printstr function, prints the emergency button during normal
+
+        NOP                                     ; recommended NOP before DINT
+        DINT                                    ; disable interrupts
+        NOP                                     ; recommended NOP after DINT
+        JMP       end_of_S2_case                        ; jump to end of S2 case
+
+;* emergency button press : sitting in idle
+idle_to_emerg:    
+        AND.W     #65487,&TA1CTL        ; turn off TA1, 65487 = ~MC_3
+        AND.W     #65519,&TA1CCTL0      ; disable TA1CCR0 interrupts, 65519 = ~CCIE
+        OR.W      #4,&TA1CTL            ; reset TA1R
+        MOV.B     #2,&current_task      ; set the current task to EMERGENCY
+        MOV.W     #153,&TA1CCR0       ; load emergency interrupt time into capture/compare [IMPORTANT CHANGE TO 615 ON WORKING XT1]
+        BIC.W     #1,&TA1CCTL0          ; clear pending TA1CCR0 interrupts
+        OR.W      #16,&TA1CCTL0         ; enable TA1CCR0 interrupts
+        OR.W      #16,&TA1CTL           ; turn on TA1
+        OR.B      #240,&P3OUT         ; toggle LEDs to on
+        NOP                             ; recommended NOP before EINT
+        EINT                            ; enable interrupts
+        NOP                             ; recommended NOP after EINT
+        MOV.W     #string1,r12          ; move string to be printed for beginning of logging "[ "
+        CALLA     #printstr             ; call printstr function, R12 is the register used for printing
+
+        MOV.W     #time,r12             ; move time string into R12
+        CALLA     #convert_timer        ; call convert timer function to fetch the latest timestamp
+
+        MOV.W     #time,r12             ; move time string into R12
+        CALLA     #printstr             ; call printstr function, prints the timestamp
+
+        MOV.W     #string9,r12          ; move string to be printed for emergency button during idle
+        CALLA     #printstr             ; call printstr function, prints the emergency button during idle
+
+        NOP                             ; recommended NOP before DINT
+        DINT                            ; disable interrupts
+        NOP                             ; recommended NOP after DINT
+
+;* end of S2 case
+end_of_S2_case:    
+        AND.B     #252,&P4IFG         ; clear S1 and S2 pending interrupt flags
+
+;* end of button ISR
+end_of_button_ISR:    
+        OR.B      #3,&P4IE              ; enable button interrupts
+        POPM.A    #5,r15                ; retrieve the saved register values from the stack
+        RETI                            ; return from interrupt
+
 	.sect	".text:_isr:UART_ISR"
 	.clink
 	.global	UART_ISR
@@ -676,7 +687,7 @@ Print_Iter:
 
 Print_End:    
         POPM.A    #1,r15                ; Restores r15
-        RETI      
+        RETI
 
 	.sect	".text:_isr:Timer0_ISR"
 	.clink
