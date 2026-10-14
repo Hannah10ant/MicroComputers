@@ -98,11 +98,11 @@ print_idx:
 ; Timer 1 ISR
 timer1_ISR:
         PUSHM.A   #1,r15                ; Sets R15 to 1
-        CMP.B     #1,&current_task+0    ; Checks if current task is NORMAL (1)
+        CMP.B     #1,&current_task    ; Checks if current task is NORMAL (1)
         JEQ       Emergency_Running     ; Jumps to required statement
 
 ; ----------------
-        CMP.B     #2,&current_task+0    ; Checks if current task is emergency (2) 
+        CMP.B     #2,&current_task    ; Checks if current task is emergency (2) 
         JEQ       Normal_Running        ; [] |513| 
                                         
 ; ----------------
@@ -111,12 +111,12 @@ timer1_ISR:
                                         
 ; ----------------
 Emergency_Running:    
-        XOR.B     #240,&PBOUT_L+0     ; Activates all LEDs
+        XOR.B     #240,&PBOUT_L     ; Activates all LEDs
         JMP       End_Running                 
                                         
 ;* ---------------
 Normal_Running:    
-        MOV.B     &S1_LED_state+0,r15   ; Moves LED_State into r15
+        MOV.B     &S1_LED_state,r15   ; Moves LED_State into r15
         TST.W     r15                   ; Checks condition
         JEQ       Case_8           
 ; ----------------
@@ -129,31 +129,31 @@ Normal_Running:
         SUB.W     #1,r15                ; Decrements
         JEQ       Case_1                ; Checks condition
 ; Default Condition
-        AND.W     #65520,&PJOUT+0       ; Sets all LEDs off
-        MOV.B     #0,&S1_LED_state+0    ; Sets state to 0
+        AND.W     #65520,&PJOUT       ; Sets all LEDs off
+        MOV.B     #0,&S1_LED_state    ; Sets state to 0
         JMP       End_Running           
 
 Case_8:    
-        MOV.W     #8,&PJOUT+0           ; Activates LED 4 
-        MOV.B     #0,&S1_LED_state+0    ; Increments LED state 
+        MOV.W     #8,&PJOUT           ; Activates LED 4 
+        MOV.B     #0,&S1_LED_state    ; Increments LED state 
         JMP       End_Running            
 
 Case_4:    
-        MOV.W     #4,&PJOUT+0           ; Activates LED 3 
-        ADD.B     #1,&S1_LED_state+0    ; Increments LED state 
+        MOV.W     #4,&PJOUT           ; Activates LED 3 
+        ADD.B     #1,&S1_LED_state    ; Increments LED state 
         JMP       End_Running            
 
 Case_2:    
-        MOV.W     #2,&PJOUT+0           ; Activates LED 2
-        ADD.B     #1,&S1_LED_state+0    ; Increments LED state  
+        MOV.W     #2,&PJOUT           ; Activates LED 2
+        ADD.B     #1,&S1_LED_state    ; Increments LED state  
         JMP       End_Running            
 
 Case_1:    
-        MOV.W     #1,&PJOUT+0           ; Activates LED 1
-        ADD.B     #1,&S1_LED_state+0    ; Increments LED state 
+        MOV.W     #1,&PJOUT           ; Activates LED 1
+        ADD.B     #1,&S1_LED_state    ; Increments LED state 
 
 End_Running:    
-        BIC.W     #1,&TA1CCTL0+0        ; Sets Timer 1 control register to inverse of CCIF6 
+        BIC.W     #1,&TA1CCTL0        ; Sets Timer 1 control register to inverse of CCIF6 
         POPM.A    #1,r15                
         RETI      
 
@@ -166,7 +166,7 @@ End_Running:
 ; Timer 0 A1 ISR
 timer0_A1_ISR:
         BIC.W     #16,0(SP)             ; Clears bits in status register. Exits LPM0
-        BIC.W     #1,&TA0CCTL1+0        ; Sets bit zero to 0
+        BIC.W     #1,&TA0CCTL1        ; Sets bit zero to 0
         RETI      
 
 	.sect	".text:printstr"
@@ -176,16 +176,16 @@ timer0_A1_ISR:
 
 ; Function for printing string to serial terminal through UART
 printstr:
-        MOV.W     r12,&print_str+0      ; Set variable print_str equal to string to be printed
-        MOV.B     #0,&print_idx+0       ; Sets print_index to 0 
+        MOV.W     r12,&print_str      ; Set variable print_str equal to string to be printed
+        MOV.B     #0,&print_idx       ; Sets print_index to 0 
         ; Moves current character to transmit buffer
-        MOV.B     &print_idx+0,r15      ; Loads current index into memory
-        ADD.W     &print_str+0,r15      ; Loads the address of the character
+        MOV.B     &print_idx,r15      ; Loads current index into memory
+        ADD.W     &print_str,r15      ; Loads the address of the character
         MOV.B     @r15,r15              ; Loads the character
-        MOV.W     r15,&UCA0TXBUF+0      ; Writes character to transmit buffer
+        MOV.W     r15,&UCA0TXBUF      ; Writes character to transmit buffer
 
-        ADD.B     #1,&print_idx+0       ; Increments index
-        OR.W      #2,&UCA0IE+0          ; Sets transmit enable bit in USCI A0 enable register
+        ADD.B     #1,&print_idx       ; Increments index
+        BIS.W     #2,&UCA0IE          ; Sets transmit enable bit in USCI A0 enable register
                                         ; Raises an interrupt once the buffer is clear and ready
 
         NOP                     
@@ -200,79 +200,79 @@ printstr:
 
 ; Initial Setup Function
 initial:
-        MOV.W     #23168,&WDTCTL+0      ; Pauses WDT
-        MOV.W     #0,&TA0CTL+0          ; Clears Timer A0 control register
-        MOV.W     #0,&TA1CTL+0          ; Clears Timer A1 control register
-        MOV.W     #1,&PJDIR+0           ; Sets LED1 as an output
-        MOV.B     #165,&CSCTL0_H+0    ; Unlocks CS
-        BIC.W     #1,&CSCTL4+0          ; Turns on XT1
-        AND.W     #63624,&CSCTL2+0      ; ANDS clock source select bits to 0
-        MOV.W     #51,&CSCTL2+0         ; ALCK source is XT1CLK ~32769 Hz
-        AND.W     #63743,&CSCTL3+0      ; Alck Input divider /1
-        AND.W     #65343,&CSCTL4+0      ; ANDS to negated XT1DRIVE_3
-        AND.W     #65503,&CSCTL4+0      ; ANDS to negated xts
-        OR.W      #64,&CSCTL5+0         ; ORs with ENSTFCNT1
+        MOV.W     #23168,&WDTCTL      ; Pauses WDT
+        MOV.W     #0,&TA0CTL          ; Clears Timer A0 control register
+        MOV.W     #0,&TA1CTL          ; Clears Timer A1 control register
+        MOV.W     #1,&PJDIR           ; Sets LED1 as an output
+        MOV.B     #165,&CSCTL0_H    ; Unlocks CS
+        BIC.W     #1,&CSCTL4          ; Turns on XT1
+        AND.W     #63624,&CSCTL2      ; ANDS clock source select bits to 0
+        MOV.W     #51,&CSCTL2         ; ALCK source is XT1CLK ~32769 Hz
+        AND.W     #63743,&CSCTL3      ; Alck Input divider /1
+        AND.W     #65343,&CSCTL4      ; ANDS to negated XT1DRIVE_3
+        AND.W     #65503,&CSCTL4      ; ANDS to negated xts
+        BIS.W     #64,&CSCTL5         ; ORs with ENSTFCNT1
 ;* --------------------------------------------------------------------------*
 
 initial_loop:    
-        BIC.W     #1,&CSCTL5+0          ; Clears using negated XT1OFFG
-        BIC.W     #2,&SFRIFG1+0         ; Clears with negated OFIFG
-        XOR.W     #1,&PJOUT+0           ; Toggles LED1
-        BIT.W     #2,&SFRIFG1+0         ; 
+        BIC.W     #1,&CSCTL5          ; Clears using negated XT1OFFG
+        BIC.W     #2,&SFRIFG1         ; Clears with negated OFIFG
+        XOR.W     #1,&PJOUT           ; Toggles LED1
+        BIT.W     #2,&SFRIFG1         ; 
         JNE       initial_loop                 
 
 ;* ---------------
 
-        MOV.B     #0,&CSCTL0_H+0        ; Sets to 0
-        MOV.W     #0,&PJOUT+0           ; Sets LED1-4 off
+        MOV.B     #0,&CSCTL0_H        ; Sets to 0
+        MOV.W     #0,&PJOUT           ; Sets LED1-4 off
 
         ; Timer 0 config
-        AND.W     #65487,&TA0CTL+0      ; Turns off timer to give a stable config
-        OR.W      #256,&TA0CTL+0      ; ALCK
-        OR.W      #192,&TA0CTL+0      ; 8 -> 4096 Hz
-        OR.W      #4,&TA0CTL+0          ; Clears TAOR so it starts from a known
-        MOV.W     #15359,&TA0CCR0+0     ; Timer overflows at 15 sec
-        AND.W     #16127,&TA0CCTL0+0    ; No capture mode
-        OR.W      #16,&TA0CCTL0+0       ; Enables interrupts
-        AND.W     #16127,&TA0CCTL1+0    ; Turns timers on
-        OR.W      #16,&TA0CTL+0         ; Sets timer to up mode 
+        AND.W     #65487,&TA0CTL      ; Turns off timer to give a stable config
+        BIS.W     #256,&TA0CTL      ; ALCK
+        BIS.W     #192,&TA0CTL      ; 8 -> 4096 Hz
+        BIS.W     #4,&TA0CTL          ; Clears TAOR so it starts from a known
+        MOV.W     #15359,&TA0CCR0     ; Timer overflows at 15 sec
+        AND.W     #16127,&TA0CCTL0    ; No capture mode
+        BIS.W     #16,&TA0CCTL0       ; Enables interrupts
+        AND.W     #16127,&TA0CCTL1    ; Turns timers on
+        BIS.W     #16,&TA0CTL         ; Sets timer to up mode 
 
         ; Timer 1 config
-        AND.W     #65487,&TA1CTL+0      ; Turns timer off for stable config
-        OR.W      #256,&TA1CTL+0      ; ALCK
-        OR.W      #192,&TA1CTL+0      ; 8 -> 4096 Hz
-        OR.W      #4,&TA1CTL+0          ; Clears TAOR so it starts from a known
-        AND.W     #16127,&TA1CCTL0+0    ; No capture mode
+        AND.W     #65487,&TA1CTL      ; Turns timer off for stable config
+        BIS.W     #256,&TA1CTL      ; ALCK
+        BIS.W     #192,&TA1CTL      ; 8 -> 4096 Hz
+        BIS.W     #4,&TA1CTL          ; Clears TAOR so it starts from a known
+        AND.W     #16127,&TA1CCTL0    ; No capture mode
 
         ; GPIO configs 
-        MOV.W     #15,&PJDIR+0          ; Sets upper nibble of PJ as output
-        MOV.B     #240,&PBDIR_L+0     ; Sets lower nibble fo P3 (PB_L) as output
-        MOV.B     #0,&PBDIR_H+0         ; Sets P4 (PB_H) as input
+        MOV.W     #15,&PJDIR          ; Sets upper nibble of PJ as output
+        MOV.B     #240,&PBDIR_L     ; Sets lower nibble fo P3 (PB_L) as output
+        MOV.B     #0,&PBDIR_H         ; Sets P4 (PB_H) as input
 
         ; Enables pull up on buttons for active low
-        OR.B      #3,&PBREN_H+0          
-        OR.B      #3,&PBOUT_H+0         
+        BIS.B     #3,&PBREN_H          
+        BIS.B     #3,&PBOUT_H         
 
         ; Interrupts occurs on high to low
-        OR.B      #3,&PBIES_H+0         
+        BIS.B     #3,&PBIES_H         
 
         ; Clears existing interrupt flags 
-        AND.B     #252,&PBIFG_H+0     
+        AND.B     #252,&PBIFG_H     
 
         ; Resets LEDs 1-8 to knowns 
-        AND.W     #65520,&PJOUT+0        
-        AND.B     #15,&PBOUT_L+0        
+        AND.W     #65520,&PJOUT        
+        AND.B     #15,&PBOUT_L        
 
         ; Sets UART
         ; 9600 baud from 1MHz DCO CLK 
-        MOV.B     #3,&PASEL1_H+0         
-        MOV.B     #129,&UCA0CTLW0_L+0 
-        MOV.W     #6,&UCA0BRW+0         
-        MOV.W     #8321,&UCA0MCTLW+0   
-        BIC.B     #1,&UCA0CTLW0_L+0    
+        MOV.B     #3,&PASEL1_H         
+        MOV.B     #129,&UCA0CTLW0_L 
+        MOV.W     #6,&UCA0BRW         
+        MOV.W     #8321,&UCA0MCTLW   
+        BIC.B     #1,&UCA0CTLW0_L    
 
         ; Enables button interrupts 
-        OR.B      #3,&PBIE_H+0      
+        BIS.B     #3,&PBIE_H      
         NOP
         BIS.W    #8,SR
         NOP       
@@ -288,7 +288,7 @@ convert_timer:
         
         PUSHM.A   #4,r10                ; [] 
         MOVA      r12,r7                ; [] |70| 
-        MOV.W     &sys_timer_overflow+0,r12 ; [] |73| 
+        MOV.W     &sys_timer_overflow,r12 ; [] |73| 
         MOV.W     #0,r13                ; [] |73| 
         MOV.W     #15000,r14            ; [] |73| 
         MOV.W     #0,r15                ; [] |73| 
@@ -296,7 +296,7 @@ convert_timer:
                                           ; [] |73| 
         MOVA      r12,r8                ; [] |73| 
         MOVA      r13,r9                ; [] |73| 
-        MOV.W     &TA0R+0,r12           ; [] |73| 
+        MOV.W     &TA0R,r12           ; [] |73| 
         MOV.W     #0,r13                ; [] |73| 
         MOV.W     #1000,r14             ; [] |73| 
         MOV.W     #0,r15                ; [] |73| 
@@ -348,16 +348,16 @@ conv_timer_end:
 ; Mainloop
 main:
         CALLA     #initial              ; Runs initial
-        MOV.W     #string1+0,r12         ; Prints first bracket
+        MOV.W     #string1,r12         ; Prints first bracket
         CALLA     #printstr             ;
                                           
-        MOV.W     #time+0,r12           ; Converts time to string 
+        MOV.W     #time,r12           ; Converts time to string 
         CALLA     #convert_timer        ; 
 
-        MOV.W     #time+0,r12           ; Prints time
+        MOV.W     #time,r12           ; Prints time
         CALLA     #printstr             ;
 
-        MOV.W     #string2+0,r12         ; Prints End of string
+        MOV.W     #string2,r12         ; Prints End of string
         CALLA     #printstr             ; 
 
 ;* ---------------
@@ -381,7 +381,7 @@ button_ISR:
         MOV.W     &TA0R,r15             ; remember the start point of TA0R in R15
         ADD.W     #120,r15            ; add 120 to the remembered TA0R as count up to value
         MOV.W     r15,&TA0CCR1          ; move the count to value into TA0CCR1
-        CMP.W     &TA0CCR1+0,&TA0CCR0   ; compare the two registers
+        CMP.W     &TA0CCR1,&TA0CCR0   ; compare the two registers
         JHS       Debnce_timr_ovrflow   ; jump if higher or same : if (TA0CCR1 < TA0CCR0)
 
 ;* ---------------
@@ -391,7 +391,7 @@ button_ISR:
         MOV.W     r15,&TA0CCR1          ; move the new value into TA0CCR1
 ;* ---------------
 Debnce_timr_ovrflow      
-        OR.W      #16,&TA0CCTL1         ; enable TA0CCR1 interrupts, #16 = #0x0010
+        BIS.W     #16,&TA0CCTL1         ; enable TA0CCR1 interrupts, #16 = #0x0010
         NOP                             ; recommended NOP before EINT
         EINT                            ; enable interrupts
         NOP                             ; instruction immediately after EINT is always run
@@ -450,7 +450,7 @@ Debnce_timr_ovrflow
 exit_normal:
         AND.W     #65487,&TA1CTL        ; turn off TA1, 65487 = ~MC_3
         AND.W     #65519,&TA1CCTL0      ; turn off TA1CCR0 interrupts, 65519 = ~CCIE
-        OR.W      #4,&TA1CTL            ; reset TA1R
+        BIS.W     #4,&TA1CTL            ; reset TA1R
         MOV.B     #0,&current_task      ; set current task to IDLE
         MOV.W     #0,&TA1CCR0           ; reset TA1CCR0 to a known state
         AND.W     #65520,&PJOUT         ; turn off all LEDs on port J lower bits
@@ -478,12 +478,12 @@ exit_normal:
 idle_to_normal:
         AND.W     #65487,&TA1CTL        ; turn off TA1, 65487 = ~MC_3
         AND.W     #65519,&TA1CCTL0      ; disable TA1CCR0 interrupts, 65519 = ~CCIE
-        OR.W      #4,&TA1CTL            ; reset TA1R
+        BIS.W     #4,&TA1CTL            ; reset TA1R
         MOV.B     #1,&current_task      ; set the current task to normal
         MOV.W     #614,&TA1CCR0       ; load normal interrupt time into capture/compare [IMPORTANT CHANGE TO 2458 ON WORKING XT1]
         BIC.W     #1,&TA1CCTL0          ; clear any pending interrupt flag
-        OR.W      #16,&TA1CCTL0         ; enable TA1CCR0 interrupts
-        OR.W      #16,&TA1CTL           ; turn on TA1
+        BIS.W     #16,&TA1CCTL0         ; enable TA1CCR0 interrupts
+        BIS.W     #16,&TA1CTL           ; turn on TA1
         MOV.W     #1,&PJOUT             ; turn on LED1
         MOV.B     #1,&S1_LED_state      ; set the LED state to 1, state 1 is with LED1 on
         NOP                             ; recommended NOP before EINT
@@ -531,7 +531,7 @@ S2_event:
 ;* emergency button press : emergency active ; normal call not suspended
         AND.W     #65487,&TA1CTL        ; turn off TA1, 65487 = ~MC_3
         AND.W     #65519,&TA1CCTL0      ; disable TA1CCR0 interrupts, 65519 = ~CCIE
-        OR.W      #4,&TA1CTL            ; reset TA1R
+        BIS.W     #4,&TA1CTL            ; reset TA1R
         MOV.B     #0,&current_task      ; set current task to IDLE
         MOV.W     #0,&TA1CCR0           ; reset TA1CCR0 to a known value
         AND.B     #15,&P3OUT            ; turn of port 3 LEDs
@@ -559,14 +559,14 @@ S2_event:
 emerg_normal_sus:    
         AND.W     #65487,&TA1CTL                ; turn off TA1, 65487 = ~MC_3
         AND.W     #65519,&TA1CCTL0              ; disable TA1CCR0 interrupts, 65519 = ~CCIE
-        OR.W      #4,&TA1CTL                    ; reset TA1R
+        BIS.W     #4,&TA1CTL                    ; reset TA1R
         MOV.B     #1,&current_task              ; change current task to NORMAL
         MOV.B     #0,&normal_suspended          ; clear the normal suspended variable
         MOV.W     #614,&TA1CCR0               ; load normal count up into TA1CCR0 [IMPORTANT CHANGE TO 2458 ON WORKING XT1]
         MOV.W     &normal_timer_mem,&TA1R       ; load the stored remembered count up time into TA1R
         BIC.W     #1,&TA1CCTL0                  ; reset any pending interrupt flags from TA1CCR0
-        OR.W      #16,&TA1CCTL0                 ; turn on TA1CCR0 interrupts
-        OR.W      #16,&TA1CTL                   ; turn on TA1
+        BIS.W     #16,&TA1CCTL0                 ; turn on TA1CCR0 interrupts
+        BIS.W     #16,&TA1CTL                   ; turn on TA1
         AND.B     #15,&P3OUT                    ; turn of emergency LEDs 15 = 0x0F
         NOP                                     ; recommended NOP before EINT
         EINT                                    ; enable interrupts
@@ -593,14 +593,14 @@ normal_to_emerg:
         AND.W     #65487,&TA1CTL                ; turn off TA1, 65487 = ~MC_3
         MOV.W     &TA1R,&normal_timer_mem       ; record the stopped normal timer value
         AND.W     #65519,&TA1CCTL0              ; disable TA1CCR0 interrupts, 65519 = ~CCIE
-        OR.W      #4,&TA1CTL                    ; reset TA1R
+        BIS.W     #4,&TA1CTL                    ; reset TA1R
         MOV.B     #1,&normal_suspended          ; set the normal suspended variable
         MOV.B     #2,&current_task              ; set the current task to EMERGENCY
         MOV.W     #153,&TA1CCR0               ; load emergency interrupt time into capture/compare [IMPORTANT CHANGE TO 615 ON WORKING XT1]
         BIC.W     #1,&TA1CCTL0                  ; clear pending TA1CCR0 interrupts
-        OR.W      #16,&TA1CCTL0                 ; enable TA1CCR0 interrupts
-        OR.W      #16,&TA1CTL                   ; turn on TA1
-        OR.B      #240,&P3OUT                 ; turn on emergency LEDs
+        BIS.W     #16,&TA1CCTL0                 ; enable TA1CCR0 interrupts
+        BIS.W     #16,&TA1CTL                   ; turn on TA1
+        BIS.B     #240,&P3OUT                 ; turn on emergency LEDs
         NOP                                     ; recommended NOP before EINT
         EINT                                    ; enable interrupts
         NOP                                     ; recommended NOP after EINT
@@ -625,13 +625,13 @@ normal_to_emerg:
 idle_to_emerg:    
         AND.W     #65487,&TA1CTL        ; turn off TA1, 65487 = ~MC_3
         AND.W     #65519,&TA1CCTL0      ; disable TA1CCR0 interrupts, 65519 = ~CCIE
-        OR.W      #4,&TA1CTL            ; reset TA1R
+        BIS.W     #4,&TA1CTL            ; reset TA1R
         MOV.B     #2,&current_task      ; set the current task to EMERGENCY
         MOV.W     #153,&TA1CCR0       ; load emergency interrupt time into capture/compare [IMPORTANT CHANGE TO 615 ON WORKING XT1]
         BIC.W     #1,&TA1CCTL0          ; clear pending TA1CCR0 interrupts
-        OR.W      #16,&TA1CCTL0         ; enable TA1CCR0 interrupts
-        OR.W      #16,&TA1CTL           ; turn on TA1
-        OR.B      #240,&P3OUT         ; toggle LEDs to on
+        BIS.W     #16,&TA1CCTL0         ; enable TA1CCR0 interrupts
+        BIS.W     #16,&TA1CTL           ; turn on TA1
+        BIS.B     #240,&P3OUT         ; toggle LEDs to on
         NOP                             ; recommended NOP before EINT
         EINT                            ; enable interrupts
         NOP                             ; recommended NOP after EINT
@@ -657,7 +657,7 @@ end_of_S2_case:
 
 ;* end of button ISR
 end_of_button_ISR:    
-        OR.B      #3,&P4IE              ; enable button interrupts
+        BIS.B     #3,&P4IE              ; enable button interrupts
         POPM.A    #5,r15                ; retrieve the saved register values from the stack
         RETI                            ; return from interrupt
 
@@ -669,21 +669,21 @@ end_of_button_ISR:
 ; ISR for UART
 UART_ISR:
         PUSHM.A   #1,r15                ; Saves r15 onto stack
-        MOV.B     &print_idx+0,r15      ; Sets print index
-        ADD.W     &print_str+0,r15      ; Sets address of character
+        MOV.B     &print_idx,r15      ; Sets print index
+        ADD.W     &print_str,r15      ; Sets address of character
         TST.B     0(r15)                ; Compares character to null terminaotr 
         JNE       Print_Iter                
 ;* ---------------
-        BIC.W     #2,&UCA0IE+0          ; Stops Tx interrupts
+        BIC.W     #2,&UCA0IE          ; Stops Tx interrupts
         BIC.W     #16,4(SP)             ; Exits LPM0
         JMP       Print_End             
                                         
 Print_Iter:    
-        MOV.B     &print_idx+0,r15      ; Reloads current index
-        ADD.W     &print_str+0,r15      ; Sets address of character
+        MOV.B     &print_idx,r15      ; Reloads current index
+        ADD.W     &print_str,r15      ; Sets address of character
         MOV.B     @r15,r15              ; Loads the character itself
-        MOV.W     r15,&UCA0TXBUF+0      ; Writes character to Tx buffer
-        ADD.B     #1,&print_idx+0       ; Increments index
+        MOV.W     r15,&UCA0TXBUF      ; Writes character to Tx buffer
+        ADD.B     #1,&print_idx       ; Increments index
 
 Print_End:    
         POPM.A    #1,r15                ; Restores r15
@@ -696,8 +696,8 @@ Print_End:
 
 ; Timer 0 ISR
 Timer0_ISR:
-        ADD.W     #1,&sys_timer_overflow+0 ; Increments system timer overflows
-        BIC.W     #1,&TA0CCTL0+0        ; Clears CCIFG flag for channel 0
+        ADD.W     #1,&sys_timer_overflow ; Increments system timer overflows
+        BIC.W     #1,&TA0CCTL0        ; Clears CCIFG flag for channel 0
         RETI      
 
 ;* --------------------------------------------------------------------------*
