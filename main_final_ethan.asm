@@ -8,7 +8,6 @@
 	.global	current_task
 	.data
 	.align	1
-	.elfsym	current_task,SYM_SIZE(1)
 
 current_task:
 	.bits		0,8
@@ -17,7 +16,6 @@ current_task:
 	.global	normal_suspended
 	.data
 	.align	1
-	.elfsym	normal_suspended,SYM_SIZE(1)
 
 normal_suspended:
 	.bits		0,8
@@ -26,7 +24,6 @@ normal_suspended:
 	.global	normal_timer_mem
 	.data
 	.align	2
-	.elfsym	normal_timer_mem,SYM_SIZE(2)
 
 normal_timer_mem:
 	.bits		0,16
@@ -35,7 +32,6 @@ normal_timer_mem:
 	.global	S1_LED_state
 	.data
 	.align	1
-	.elfsym	S1_LED_state,SYM_SIZE(1)
 
 S1_LED_state:
 	.bits		0,8
@@ -44,7 +40,6 @@ S1_LED_state:
 	.global	sys_timer_overflow
 	.data
 	.align	2
-	.elfsym	sys_timer_overflow,SYM_SIZE(2)
 
 sys_timer_overflow:
 	.bits		0,16
@@ -53,7 +48,6 @@ sys_timer_overflow:
 	.global	time
 	.sect	".data:time", RW
 	.align	2
-	.elfsym	time,SYM_SIZE(12)
 
 time:
 	.bits		0x30,8
@@ -82,7 +76,6 @@ time:
 	.global	print_idx
 	.data
 	.align	1
-	.elfsym	print_idx,SYM_SIZE(1)
 
 print_idx:
 	.bits		0,8
@@ -285,60 +278,60 @@ initial_loop:
 
 ; Function to Convert Timer from integer to string
 convert_timer:
-        
-        PUSHM.A   #4,r10                ; [] 
-        MOVA      r12,r7                ; [] |70| 
-        MOV.W     &sys_timer_overflow,r12 ; [] |73| 
-        MOV.W     #0,r13                ; [] |73| 
-        MOV.W     #15000,r14            ; [] |73| 
-        MOV.W     #0,r15                ; [] |73| 
-        CALLA     #__mspabi_mpyl        ; [] |73| 
-                                          ; [] |73| 
-        MOVA      r12,r8                ; [] |73| 
-        MOVA      r13,r9                ; [] |73| 
-        MOV.W     &TA0R,r12           ; [] |73| 
-        MOV.W     #0,r13                ; [] |73| 
-        MOV.W     #1000,r14             ; [] |73| 
-        MOV.W     #0,r15                ; [] |73| 
-        CALLA     #__mspabi_mpyl        ; [] |73| 
-                                          ; [] |73| 
-        CALLA     #__mspabi_srll_12     ; [] |73| 
-                                          ; [] |73| 
-        ADD.W     r12,r8                ; [] |73| 
-        ADDC.W    r13,r9                ; [] |73| 
+                                        ; first label converts the overflow + TA0R to a timestamp number
+        PUSHM.A   #4,r10                ; push registers r10, r9, r8, r7 to stack
+        MOVA      r12,r7                ; move r12 (time string) to r7
+        MOV.W     &sys_timer_overflow,r12 ; registers 12 to 15 used as arguments, see SLAA534A section 3.3
+        MOV.W     #0,r13                ; upper half of argument "1" i.e. long is 32 bits r13 is upper half r12 is lower half
+        MOV.W     #15000,r14            ; lower half of argument "2" i.e. long is 32 bits r14 is lower half r15 is upper half
+        MOV.W     #0,r15                ;
+        CALLA     #__mspabi_mpyl        ; muliply long by long subroutine
+
+        MOVA      r12,r8                ; return from subroutine stored in R12:13 (unsigned long), see SLAA534A section 3.4
+        MOVA      r13,r9                ; saves the result of sys_timer_overflow * 15000 in r8:r9
+        MOV.W     &TA0R,r12             ; lower half of argument "1"
+        MOV.W     #0,r13                ; upper half of argument "1"
+        MOV.W     #1000,r14           ; lower half of argument "2"
+        MOV.W     #0,r15                ; upper half of argument "2"
+        CALLA     #__mspabi_mpyl        ; multiply long by long subroutine
+
+        CALLA     #__mspabi_srll_12     ; shift long right by 12 subroutine, uses r12 and r13 as arguments
+
+        ADD.W     r12,r8                ; r12 + r8 -> r8, produces a carry
+        ADDC.W    r13,r9                ; r13 + r9 + C -> r9, produces upper byte of total_time
         MOV.W     #0,r10                ; Sets index for loop to 0
-        CMP.W     #9,r10                ; Checks if index equals 9
-        JGE       conv_timer_end       ; Loops if less than
+        CMP.W     #9,r10                ; Checks if index equals 9, r10 - 9 = 0 - 9 = -9 -> N = 1, V = 0
+        JGE       conv_timer_end        ; Loops if less than, tests negative (N) and overflow bit (V), if both set or reset then jump
 
 ;* ---------------
 conv_timer_loop:    
-        MOVA      r8,r12                ; [] |79| 
-        MOVA      r9,r13                ; [] |79| 
-        MOV.W     #10,r14               ; [] |79| 
-        MOV.W     #0,r15                ; [] |79| 
-        CALLA     #__mspabi_remul       ; [] |79| 
-                                          ; [] |79| 
-        ADD.B     #48,r14               ; [] |79| 
-        MOVA      r7,r15                ; [] |79| 
-        SUB.W     r10,r15               ; [] |79| 
-        MOV.B     r14,9(r15)            ; [] |79| 
-        MOVA      r8,r12                ; [] |80| 
-        MOVA      r9,r13                ; [] |80| 
-        MOV.W     #10,r14               ; [] |80| 
-        MOV.W     #0,r15                ; [] |80| 
-        CALLA     #__mspabi_divul       ; [] |80| 
-                                          ; [] |80| 
-        MOVA      r12,r8                ; [] |80| 
-        MOVA      r13,r9                ; [] |80| 
-        ADD.B     #1,r10                ; [] |77| 
-        SXT       r10                   ; [] |77| 
-        CMP.W     #9,r10                ; [] |77| 
-        JL        conv_timer_loop                 ; [] |77| 
-                                          ; [] |77| 
+        MOVA      r8,r12                ; total_time (x)
+        MOVA      r9,r13                ;
+        MOV.W     #10,r14               ; 10 (y)
+        MOV.W     #0,r15                ;
+        CALLA     #__mspabi_remul       ; x mod y subroutine
+
+        ADD.B     #48,r14               ; ASCII character '0' (not '\0') also note that r14 holds the final mod value
+        MOVA      r7,r15                ; move the time string index to r15
+        SUB.W     r10,r15               ; time - 0 -> time - 1 -> time - 2 -> ... 
+        MOV.B     r14,9(r15)            ; time + 9 -> time + 8 -> time + 7 -> ...
+        MOVA      r8,r12                ; total_time
+        MOVA      r9,r13                ;
+        MOV.W     #10,r14               ; 10
+        MOV.W     #0,r15                ;
+        CALLA     #__mspabi_divul       ; total_time / 10
+
+        MOVA      r12,r8                ; save lower total time in r8
+        MOVA      r13,r9                ; save upper total time in r9
+        ADD.B     #1,r10                ; add 1 to the index
+        SXT       r10                   ; idx is a signed value, dont want it overflowing
+        CMP.W     #9,r10                ; check if index is 9
+        JL        conv_timer_loop                 ; jump to loop label if index is less than 9
+
 ;* ---------------
 conv_timer_end:    
-        POPM.A    #4,r10                ; [] 
-        RETA      
+        POPM.A    #4,r10                ; pop r10, r9, r8, r7 from the stack
+        RETA                            ; 
 
 	.sect	".text:main"
 	.clink
