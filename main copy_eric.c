@@ -20,7 +20,7 @@
 #define EMERGENCY  2
 
 // change to 1 if using on working MSP430
-#define TIME_SCALAR 0.25
+#define TIME_SCALAR 1
 
 // tracks which process has priority
 volatile unsigned char current_task = IDLE;
@@ -200,7 +200,7 @@ __interrupt void button_ISR(void)
     // Consider changing the debounce to use timer-based timing maybeee // i know (im crine), im not sure how to change this to interrupt based
 
     unsigned int start = TA0R;
-    TA0CCR1 = start + 120; // change this 120 to something more appropriate for 32 kHz
+    TA0CCR1 = start + 120;
     if (TA0CCR1 > TA0CCR0)
     {
         TA0CCR1 = TA0CCR1 - (TA0CCR0 + 1);
